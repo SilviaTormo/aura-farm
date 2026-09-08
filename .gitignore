@@ -1,0 +1,15 @@
+# ── Regenerable build artifacts ──────────────────────────────
+# The place file is rebuilt from src/ by PLAY.bat (rojo build).
+AuraFarmPilot.rbxl
+*.rbxl.lock
+
+# ── Generated test bundle (node tests/bundle.js regenerates it) ──
+tests/bundle_data.luau
+
+# ── Test evidence media (57 MB of videos/frames; regenerable) ──
+evidence/
+
+# ── Toolchain extras: zips duplicate the committed exes; the
+#    Studio installer is not needed to build or test ──────────
+tools/*.zip
+tools/RobloxStudioInstaller.exe
