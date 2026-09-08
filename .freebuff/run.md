@@ -149,6 +149,22 @@ tenía problemas reales con 11 poses:
 - Regla para la usuaria: tras cada rebuild, CERRAR y REABRIR Studio. La
   versión v0.6.0 debe verse abajo a la izquierda; si no, es sesión vieja.
 
+## Pasada "rueda solo con poses owned" (2026-09-09, 1:05, v0.6.1)
+
+Feedback: "en la rueda no deberían salir las que no tienes" — correcto, y
+concuerda con el patrón "parece que no funcionan": una pared de botones
+bloqueados se lee como botones rotos.
+
+- La rueda P ahora lista SOLO poses owned (los candados viven en la tienda,
+  que ya los lista con su BUY). Se reconstruye al vuelo cuando llega
+  SyncUnlocked (join) o PoseUnlocked (compra) → compras en la tienda y la
+  pose aparece en la rueda sin reabrir nada. Fondo verde = gratis, violeta =
+  comprada. Si no tienes ninguna: "no poses yet — press B to buy".
+- DuelUi y TrainingUi YA filtraban por owned (verificado) — solo la rueda
+  mostraba todo.
+- 17/17 verde, rebuild v0.6.1, Studio relanzado (sin diálogo de recuperación
+  esta vez).
+
 ## Estado (2026-09-08, 17:30)
 
 - 14/14 tests de integración VERDE (boot, spots, join/sync, pose+aura,
@@ -263,3 +279,5 @@ tenía problemas reales con 11 poses:
 - .gitignore con política real: fuera AuraFarmPilot.rbxl (regenerable por PLAY.bat), *.rbxl.lock, tests/bundle_data.luau (lo genera bundle.js), evidence/ (57 MB de vídeos/frames regenerables), tools/*.zip y RobloxStudioInstaller.exe (duplican lo necesario). DENTRO del repo: tools/rojo/luau exes + scripts del kit (PLAY.bat y TEST.bat los necesitan — la política antigua tools/ entero rompía un clone fresco), src, tests, docs y bats.
 - Re-verificado tras la limpieza: TEST.bat 17/17 ALL GREEN, rojo build OK, git status solo con intencionales. SmokeTest sigue en default.project.json (quitar antes de publicar).
 - COMMIT BASELINE: root commit en main con todo el estado auditado (56 archivos). Forma elegida: commit único en main (la alternativa root-commit vacío + rama feature exigía cambiar de rama, vetado). Nada pushed: el paso siguiente es dueño del remoto y del PR.
+- ENTREGA: repo privado github.com/SilviaTormo/aura-farm (gh auth SilviaTormo). Forma: main = e01e2f0 (raíz chore vacía) + pilot-baseline = b30b7c6 (baseline completa, árbol idéntico al commit auditado 687a758). PR #1 abierto base main ← head pilot-baseline (diff = 56 archivos). Nada mergeado; checks y merge son del siguiente paso.
+- CI: workflow offline-tests anadido (mismos comandos que TEST.bat, windows-latest). Los runs mueren con "account is locked due to a billing issue": bloqueo de facturacion en la cuenta GitHub, solo la propietaria puede levantarlo en github.com/settings/billing. El repo paso a PUBLICO para descartar el gate del free plan; sigue bloqueado a nivel cuenta.
