@@ -1,0 +1,48 @@
+{
+  "name": "aura-farm",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "AuraFarmShared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "AuraFarmServer": {
+        "$path": "src/server"
+      },
+      "SmokeTest": {
+        "$path": "tests/studio/SmokeTest.server.lua"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "AuraFarmClient": {
+          "$path": "src/client"
+        }
+      }
+    },
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "FilteringEnabled": true
+      }
+    },
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Ambient": [
+          0,
+          0,
+          0
+        ],
+        "OutdoorAmbient": [
+          128,
+          128,
+          128
+        ],
+        "Brightness": 3
+      }
+    }
+  }
+}
