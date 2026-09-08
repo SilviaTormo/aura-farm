@@ -11,13 +11,22 @@
 -- invisible (limbs clipping through the body). Angles now match real arm
 -- rotation about the shoulder pivot: negative Z raises the RIGHT arm out to
 -- its side, positive Z raises the LEFT arm.
+--
+-- v3: RIG-AWARE. The tables speak R15 (RightShoulder/LeftShoulder/Root/…).
+-- R6 rigs name those motors differently ("Right Shoulder" with a space,
+-- "RootJoint") and have NO elbows; worse, R6 shoulder C0s carry a built-in
+-- 90-degree yaw, so the same (rx, rz) would swing arms forward/back instead
+-- of out to the sides. Each entry now resolves per rig, with derived R6
+-- angle transforms. A pose that matches ZERO joints warns instead of
+-- failing silently (that silence shipped once and read as "the player
+-- doesn't do the pose").
 
 local TweenService = game:GetService("TweenService")
 
 local PoseAnimator = {}
 
 -- poseId -> array of { motor, rx, ry, rz } (radians), composed from each
--- joint's rest pivot.
+-- joint's rest pivot. Angles are in R15 joint space.
 local POSE_TABLES: { [string]: { { motor: string, rx: number, ry: number, rz: number, ry2: number? } } } = {
 	tpose = {
 		-- Straight out to the sides, slightly back so arms don't z-fight.
@@ -102,11 +111,37 @@ local POSE_TABLES: { [string]: { { motor: string, rx: number, ry: number, rz: nu
 	},
 }
 
+-- ── R6 support ──────────────────────────────────────────────────
+-- Derived mapping from R15 joint space. R6 shoulder pivots yaw the local
+-- frame (right +90deg, left -90deg), so:
+--   right shoulder: R6(rx, ry, rz) = R15(-rz, ry, rx)
+--   left shoulder:  R6(rx, ry, rz) = R15(rz, ry, -rx)
+-- Neck / RootJoint have no such yaw: angles pass through unchanged.
+local R6_ALIAS: { [string]: { motor: string, side: string? } } = {
+	RightShoulder = { motor = "Right Shoulder", side = "right" },
+	LeftShoulder = { motor = "Left Shoulder", side = "left" },
+	Root = { motor = "RootJoint" },
+}
+
+-- Transforms one POSE_TABLES entry into R6 joint space (radians).
+local function toR6(entry): (string, number, number, number)
+	local alias = R6_ALIAS[entry.motor]
+	local name = alias and alias.motor or entry.motor
+	if alias and alias.side == "right" then
+		return name, -entry.rz, entry.ry, entry.rx
+	elseif alias and alias.side == "left" then
+		return name, entry.rz, entry.ry, -entry.rx
+	end
+	return name, entry.rx, entry.ry, entry.rz
+end
+
 -- Character -> array of { motor, rest, goal }
 local applied: { [Model]: { { motor: Motor6D, rest: CFrame, goal: CFrame } } } = {}
 -- True rest C0 per joint, captured the first time we touch it. Posing always
 -- starts FROM here, so switching poses mid-tween can never accumulate drift.
 local restCache: { [Motor6D]: CFrame } = {}
+-- One visibility warning per character: zero matched joints = invisible pose.
+local warnedRig: { [Model]: boolean } = {}
 
 local TWEEN_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
@@ -117,18 +152,34 @@ function PoseAnimator.applyPose(character: Model, poseId: string)
 		return
 	end
 	local record = {}
+	local matched = 0
 	for _, entry in table_ do
-		-- R15 nests Motor6Ds inside the limbs; recurse.
-		local motor = character:FindFirstChild(entry.motor, true)
+		-- Rig-aware resolution: try the R15 motor name first (R15 nests
+		-- Motor6Ds inside the limbs, hence recursive search), then the R6
+		-- alias with transformed angles. Elbow entries resolve to nothing
+		-- on R6 by design (R6 has no elbow joints).
+		local name, rx, ry, rz = entry.motor, entry.rx, entry.ry, entry.rz
+		local motor = character:FindFirstChild(name, true)
+		if not motor and R6_ALIAS[name] then
+			name, rx, ry, rz = toR6(entry)
+			motor = character:FindFirstChild(name, true)
+		end
 		if motor and motor:IsA("Motor6D") then
+			matched += 1
 			if not restCache[motor] then
 				restCache[motor] = motor.C0
 			end
 			local rest = restCache[motor]
-			local goal = rest * CFrame.Angles(entry.rx, entry.ry, entry.rz)
+			local goal = rest * CFrame.Angles(rx, ry, rz)
 			TweenService:Create(motor, TWEEN_INFO, { C0 = goal }):Play()
 			table.insert(record, { motor = motor, rest = rest, goal = goal })
 		end
+	end
+	-- A pose that matched ZERO joints is invisible by definition. Warn once
+	-- per character instead of failing silently.
+	if matched == 0 and not warnedRig[character] then
+		warnedRig[character] = true
+		warn(("[PoseAnimator] pose %q matched 0 joints on %s -- unknown rig?"):format(poseId, character.Name))
 	end
 	applied[character] = record
 end

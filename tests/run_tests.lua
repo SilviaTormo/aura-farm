@@ -412,6 +412,36 @@ test("crowd: NPCs exist and stop hyping when nobody poses", function()
 	assertTrue(Harness.lastEvent("AuraChanged") == nil, "aura paid while nobody was posing")
 end)
 
+test("pose: R6 rig gets posed (space-named motors, derived angles)", function()
+	local p = joinPlayer(112, "SixR112")
+	Harness.advance(0.3)
+	local char = p.Character
+	local torso = Instance.new("Part")
+	torso.Name = "Torso"
+	torso.Parent = char
+	local arm = Instance.new("Part")
+	arm.Name = "Right Arm"
+	arm.Parent = char
+	local motor = Instance.new("Motor6D")
+	motor.Name = "Right Shoulder" -- R6 naming (space), not R15's RightShoulder
+	motor.Part0 = torso
+	motor.Part1 = arm
+	motor.Parent = arm
+
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	Harness.advance(0.3)
+
+	local c0 = (motor :: any).C0
+	local rot = rawget(c0, "_rot")
+	assertTrue(rot ~= nil, "R6 C0 has no rotation matrix")
+	local offDiagonal = math.abs(rot[1][2]) + math.abs(rot[1][3])
+		+ math.abs(rot[2][1]) + math.abs(rot[2][3])
+		+ math.abs(rot[3][1]) + math.abs(rot[3][2])
+	assertTrue(offDiagonal > 0.5, "R6 rig not posed -- animator ignored R6 motors")
+	Remotes.StopPose.OnServerEvent:Fire(p)
+	Harness.advance(0.3)
+end)
+
 print(("\n%d passed, %d failed"):format(passed, failedCount))
 if failedCount > 0 then
 	for _, f in failedNames do
