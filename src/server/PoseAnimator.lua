@@ -153,6 +153,7 @@ function PoseAnimator.applyPose(character: Model, poseId: string)
 	end
 	local record = {}
 	local matched = 0
+	local firstTried = table_[1] and table_[1].motor or "?"
 	for _, entry in table_ do
 		-- Rig-aware resolution: try the R15 motor name first (R15 nests
 		-- Motor6Ds inside the limbs, hence recursive search), then the R6
@@ -179,7 +180,20 @@ function PoseAnimator.applyPose(character: Model, poseId: string)
 	-- per character instead of failing silently.
 	if matched == 0 and not warnedRig[character] then
 		warnedRig[character] = true
-		warn(("[PoseAnimator] pose %q matched 0 joints on %s -- unknown rig?"):format(poseId, character.Name))
+		local motors, classes = {}, {}
+		for _, d in character:GetDescendants() do
+			if d:IsA("Motor6D") then
+				table.insert(motors, d.Name)
+			end
+		end
+		local probe = character:FindFirstChild(firstTried, true)
+		if probe then
+			table.insert(classes, ("%s is a %s, not a Motor6D"):format(firstTried, probe.ClassName))
+		end
+		warn(("[PoseAnimator] pose %q matched 0 joints on %s. Motor6Ds present: %s %s"):format(
+			poseId, character.Name,
+			#motors > 0 and table.concat(motors, ", ") or "NONE",
+			#classes > 0 and ("; " .. table.concat(classes, "; ")) or ""))
 	end
 	applied[character] = record
 end

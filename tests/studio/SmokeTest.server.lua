@@ -93,7 +93,18 @@ if root then
 
 	-- Motor6D: the server PoseAnimator should have moved shoulder C0s.
 	local rs = char:FindFirstChild("RightShoulder", true) -- recursive: R15 nests motors inside limbs
-	scored("pose_motor6d", rs ~= nil, rs and "RightShoulder present (animator will pose it)" or "R6-style motor missing")
+	local allMotors = {}
+	for _, d in char:GetDescendants() do
+		if d:IsA("Motor6D") then
+			table.insert(allMotors, d.Name)
+		end
+	end
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	scored("pose_motor6d", rs ~= nil and rs:IsA("Motor6D"), ("%s | rig motors [%d]: %s | humanoid=%s rigType=%s"):format(
+		rs and rs:IsA("Motor6D") and "RightShoulder is Motor6D" or (rs and ("RightShoulder is " .. rs.ClassName .. " (NOT Motor6D!)") or "RightShoulder MISSING"),
+		#allMotors, table.concat(allMotors, ", "),
+		humanoid and "yes" or "no",
+		humanoid and tostring(humanoid.RigType) or "-"))
 
 	-- AURA: crowd hype ticks the rate × multipliers.
 	local before = auraStat and auraStat.Value or 0
