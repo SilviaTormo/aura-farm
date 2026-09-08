@@ -180,20 +180,20 @@ function PoseAnimator.applyPose(character: Model, poseId: string)
 	-- per character instead of failing silently.
 	if matched == 0 and not warnedRig[character] then
 		warnedRig[character] = true
-		local motors, classes = {}, {}
-		for _, d in character:GetDescendants() do
-			if d:IsA("Motor6D") then
-				table.insert(motors, d.Name)
+		local detail = ""
+		if typeof(character) == "Instance" then -- mock characters in tests have no GetDescendants
+			local motors = {}
+			for _, d in character:GetDescendants() do
+				if d:IsA("Motor6D") then
+					table.insert(motors, d.Name)
+				end
 			end
+			local probe = character:FindFirstChild(firstTried, true)
+			detail = (" Motor6Ds present: %s%s"):format(
+				#motors > 0 and table.concat(motors, ", ") or "NONE",
+				probe and ("; " .. firstTried .. " is a " .. probe.ClassName .. ", not a Motor6D") or "")
 		end
-		local probe = character:FindFirstChild(firstTried, true)
-		if probe then
-			table.insert(classes, ("%s is a %s, not a Motor6D"):format(firstTried, probe.ClassName))
-		end
-		warn(("[PoseAnimator] pose %q matched 0 joints on %s. Motor6Ds present: %s %s"):format(
-			poseId, character.Name,
-			#motors > 0 and table.concat(motors, ", ") or "NONE",
-			#classes > 0 and ("; " .. table.concat(classes, "; ")) or ""))
+		warn(("[PoseAnimator] pose %q matched 0 joints on %s.%s"):format(poseId, character.Name, detail))
 	end
 	applied[character] = record
 end
