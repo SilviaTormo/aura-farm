@@ -278,16 +278,21 @@ local DEV_ITEMS = {
 	{ key = "CooldownRefill", label = "⚡REFILL" },
 	{ key = "PartyMode", label = "🎉PARTY" },
 }
-local devList = Instance.new("UIListLayout")
-devList.FillDirection = Enum.FillDirection.Horizontal
-devList.Padding = UDim.new(0, 4)
-devList.VerticalAlignment = Enum.VerticalAlignment.Center
-devList.HorizontalAlignment = Enum.HorizontalAlignment.Right
-devList.Parent = devBar
+local devGrid = Instance.new("UIGridLayout")
+devGrid.CellSize = UDim2.new(0, 86, 0, 20)
+devGrid.CellPadding = UDim2.new(0, 4, 0, 3)
+devGrid.FillDirectionMaxCells = 4
+devGrid.HorizontalAlignment = Enum.HorizontalAlignment.Right
+devGrid.VerticalAlignment = Enum.VerticalAlignment.Center
+devGrid.SortOrder = Enum.SortOrder.LayoutOrder
+devGrid.Parent = devBar
+local devIndex = 0
 for _, item in DEV_ITEMS do
+	devIndex += 1
 	local b = Instance.new("TextButton")
 	b.Name = "DevTry_" .. item.key
-	b.Size = UDim2.new(0, 62, 0, 34)
+	b.LayoutOrder = devIndex
+	b.Size = UDim2.new(0, 86, 0, 20)
 	b.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
 	b.Text = item.label
 	b.TextColor3 = Color3.fromRGB(40, 30, 0)
