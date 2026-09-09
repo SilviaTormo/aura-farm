@@ -472,8 +472,16 @@ local services = {
 	MarketplaceService = {
 		PromptGamePassPurchaseFinished = Signal.new(),
 		ProcessReceipt = nil,
-		PromptGamePassPurchase = function() end,
-		PromptProductPurchase = function() end,
+		lastGamePassPlayer = nil,
+		lastGamePassPrompt = nil,
+		lastProductPrompt = nil,
+		PromptGamePassPurchase = function(self, player, passId)
+			self.lastGamePassPlayer = player
+			self.lastGamePassPrompt = passId
+		end,
+		PromptProductPurchase = function(self, player, productId)
+			self.lastProductPrompt = productId
+		end,
 		UserOwnsGamePassAsync = function() return false end,
 	},
 	CaptureService = {},

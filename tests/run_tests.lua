@@ -459,6 +459,89 @@ test("training: pose-less round end restores nothing (guard no-op)", function()
 	assertTrue(AuraService.getActivePose(p) == nil, "round end resurrected a stopped economy entry")
 end)
 
+-- ════════════════════════════════════════════════════════════════
+-- Monetization: the full Robux pipeline (gamepasses + dev products)
+-- driven through the mock MarketplaceService. Config ships with id = 0
+-- ("coming soon"), so real IDs are temporarily injected per test.
+-- ════════════════════════════════════════════════════════════════
+local marketplace = Harness.services.MarketplaceService
+local gamepasses = Config.GAMEPASSES
+test("monetization: pass buy prompts Roblox purchase, grant applies perk", function()
+	local p = joinPlayer(501, "Buyer501")
+	Harness.advance(0.3)
+
+	gamepasses.DoubleAura = 111222
+	marketplace.lastGamePassPrompt = nil
+	marketplace.lastGamePassPlayer = nil
+	Harness.clearEvents()
+	Remotes.BuyPass.OnServerEvent:Fire(p, "DoubleAura")
+	assertEq(marketplace.lastGamePassPrompt, 111222, "pass button did not prompt the Roblox purchase")
+	assertEq(marketplace.lastGamePassPlayer, p, "purchase prompt went to the wrong player")
+
+	-- Roblox confirms the purchase later; first measure the PLAIN rate.
+	placeAt(p, Vector3.new(0, 3.5, 0))
+	DataService.unlockPose(p, "wave")
+	Remotes.RequestPose.OnServerEvent:Fire(p, "wave")
+	AuraService.grantTick(p, 5)
+	local before = auraStat(p).Value
+	AuraService.grantTick(p, 5)
+	local plainDelta = auraStat(p).Value - before
+	assertTrue(plainDelta > 0, "setup: farming pays nothing, 2x comparison meaningless")
+
+	-- The perk must actually pay: grantTick honors the 2x attribute.
+	before = auraStat(p).Value
+	marketplace.PromptGamePassPurchaseFinished:Fire(p, 111222, true)
+	assertTrue(auraStat(p):GetAttribute("DoubleAura") == true, "confirmed purchase did not apply the 2x aura perk")
+	AuraService.grantTick(p, 5)
+	assertTrue(auraStat(p).Value - before > plainDelta, "2x pass did not increase aura payment")
+end)
+
+test("monetization: dev product receipt grants perk, replay is deduped", function()
+	local p = joinPlayer(502, "Buyer502")
+	Harness.advance(0.3)
+
+	Config.DEV_PRODUCTS.MogShield = 333444
+	Harness.clearEvents()
+	Remotes.BuyProduct.OnServerEvent:Fire(p, "MogShield")
+	assertEq(marketplace.lastProductPrompt, 333444, "product button did not prompt the Roblox purchase")
+
+	-- Roblox delivers the receipt (exactly what ProcessReceipt receives).
+	local receipt = {
+		PlayerId = p.UserId,
+		ProductId = 333444,
+		PurchaseId = 987654,
+	}
+	local decision = marketplace.ProcessReceipt(receipt)
+	assertEq(decision, Harness.Enum.ProductPurchaseDecision.PurchaseGranted, "valid receipt not granted")
+	local until_ = auraStat(p):GetAttribute("MogShieldUntil")
+	assertTrue(until_ ~= nil and until_ > Harness.os.time(), "granted receipt did not arm the Mog Shield")
+
+	-- Roblox redelivers the same receipt (its documented at-least-once
+	-- behavior): must re-grant decision WITHOUT re-arming a longer shield.
+	auraStat(p):SetAttribute("MogShieldUntil", 1) -- canary: would be overwritten by a re-grant
+	decision = marketplace.ProcessReceipt(receipt)
+	assertEq(decision, Harness.Enum.ProductPurchaseDecision.PurchaseGranted, "replayed receipt not granted")
+	assertEq(auraStat(p):GetAttribute("MogShieldUntil"), 1, "replayed receipt re-granted the perk (dedupe broken)")
+end)
+
+test("monetization: id=0 stays a coming-soon stub", function()
+	local p = joinPlayer(503, "Browser503")
+	Harness.advance(0.3)
+	marketplace.lastGamePassPrompt = nil -- earlier tests prompted real IDs
+	marketplace.lastProductPrompt = nil
+
+	Harness.clearEvents()
+	Remotes.BuyPass.OnServerEvent:Fire(p, "SigmaPosePack")
+	assertEq(marketplace.lastGamePassPrompt, nil, "id=0 pass opened a Roblox prompt")
+	local err = Harness.lastEvent("ShopError", p)
+	assertTrue(err ~= nil, "id=0 pass gave no feedback")
+
+	Harness.clearEvents()
+	Remotes.BuyProduct.OnServerEvent:Fire(p, "PartyMode")
+	assertEq(marketplace.lastProductPrompt, nil, "id=0 product opened a Roblox prompt")
+	assertTrue(Harness.lastEvent("ShopError", p) ~= nil, "id=0 product gave no feedback")
+end)
+
 test("data: save/load round-trip preserves aura + unlocks", function()
 	local p = joinPlayer(301, "Saver301")
 	Harness.advance(0.3)
