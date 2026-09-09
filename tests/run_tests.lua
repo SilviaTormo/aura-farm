@@ -41,7 +41,7 @@ end
 
 for _, name in {
 	"MapService", "DataService", "AuraService", "CrowdService", "PoseService",
-	"PoseAnimator", "JudgeService", "DuelService", "TrainingService",
+	"JudgeService", "DuelService", "TrainingService",
 	"LeaderboardService", "MonetizationService", "CapturePromptService",
 } do
 	startService(name)
@@ -51,9 +51,10 @@ local MapService = Harness.requireModule(serverFolder:FindFirstChild("MapService
 local DataService = Harness.requireModule(serverFolder:FindFirstChild("DataService"))
 local AuraService = Harness.requireModule(serverFolder:FindFirstChild("AuraService"))
 local PoseService = Harness.requireModule(serverFolder:FindFirstChild("PoseService"))
-local PoseAnimator = Harness.requireModule(serverFolder:FindFirstChild("PoseAnimator"))
 local Remotes = Harness.requireModule(Harness.sharedFolder:FindFirstChild("Remotes"))
 local Config = Harness.requireModule(Harness.sharedFolder:FindFirstChild("Config"))
+local PoseTables = Harness.requireModule(Harness.sharedFolder:FindFirstChild("PoseTables"))
+local PoseRenderer = Harness.requireModule(Harness.poseRendererModule)
 
 -- ── Player helper: full join (player + character) ───────────────
 local function joinPlayer(userId, name)
@@ -65,8 +66,8 @@ local function joinPlayer(userId, name)
 	root.Name = "HumanoidRootPart"
 	root.Position = Vector3.new(0, 3.5, 18) -- spawn
 	root.Parent = char
+	char.Parent = Harness.workspace -- real characters live in workspace
 	player.Character = char -- property write: stored where reads find it
-	PoseAnimator.bindPlayer(char)
 	return player
 end
 
@@ -116,45 +117,94 @@ test("pose: request applies pose, crowd pays aura, client told", function()
 	assertTrue(Harness.lastEvent("PoseStarted", p) ~= nil, "no PoseStarted broadcast")
 end)
 
-test("pose: Motor6D C0 actually rotates off its rest pivot (visibility regression)", function()
-	local p = joinPlayer(110, "Poser110")
-	Harness.advance(0.3)
-	-- Build a minimal R15-ish rig: nested motor like real R15 limbs.
-	local char = p.Character
-	local torso = Instance.new("Part")
-	torso.Name = "UpperTorso"
-	torso.Parent = char
-	local arm = Instance.new("Part")
-	arm.Name = "RightUpperArm"
-	arm.Parent = char
-	local motor = Instance.new("Motor6D")
-	motor.Name = "RightShoulder"
-	motor.Part0 = torso
-	motor.Part1 = arm
-	motor.Parent = arm -- R15 nests motors inside the limbs
+-- Builds a minimal rig on a character. jointClass: "AnimationConstraint"
+-- (2026 Avatar Joint Upgrade rigs) or "Motor6D" (legacy).
+local function addJoint(char, jointClass, name, parentName, childName)
+	local parentPart = Instance.new("Part")
+	parentPart.Name = parentName
+	parentPart.Parent = char
+	local childPart = Instance.new("Part")
+	childPart.Name = childName
+	childPart.Parent = char
+	local joint = Instance.new(jointClass)
+	joint.Name = name
+	joint.Parent = childPart -- R15 nests joints inside the limbs
+	return joint
+end
 
-	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
-	Harness.advance(0.3)
+-- Drives the renderer's real frame loop until alpha reaches 1 (7+ frames).
+local function runFrames(frames)
+	for _ = 1, frames or 10 do
+		Harness.services.RunService.PreSimulation:Fire()
+	end
+end
 
-	local c0 = (motor :: any).C0
-	-- A T-pose must rotate the arm out to the side: the rotation part of C0
-	-- must differ from identity (the old bug left it visually unchanged).
-	local rot = rawget(c0, "_rot")
-	assertTrue(rot ~= nil, "C0 has no rotation matrix")
-	local offDiagonal = math.abs(rot[1][2]) + math.abs(rot[1][3])
+local function rotationOffDiagonal(cf)
+	local rot = rawget(cf, "_rot")
+	assertTrue(rot ~= nil, "joint Transform has no rotation matrix")
+	return math.abs(rot[1][2]) + math.abs(rot[1][3])
 		+ math.abs(rot[2][1]) + math.abs(rot[2][3])
 		+ math.abs(rot[3][1]) + math.abs(rot[3][2])
-	assertTrue(offDiagonal > 0.5, "tpose C0 rotation ~identity — pose invisible")
+end
 
-	-- Re-posing must NOT double-apply: stop, pose again, compare against the
-	-- first application (old code multiplied onto the current C0).
-	Remotes.StopPose.OnServerEvent:Fire(p)
+test("pose: AnimationConstraint rig actually rotates (visibility regression, 2026 rigs)", function()
+	local p = joinPlayer(110, "Poser110")
 	Harness.advance(0.3)
+	local joint = addJoint(p.Character, "AnimationConstraint", "RightShoulder", "UpperTorso", "RightUpperArm")
+
 	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	runFrames(10)
+
+	-- The PoseStarted broadcast must have driven the renderer: the joint's
+	-- Transform must rotate off identity (the old server-C0 poser wrote C0
+	-- on AnimationConstraint rigs — read-only — so nothing ever moved).
+	assertTrue(rotationOffDiagonal(joint.Transform) > 0.5, "tpose Transform ~identity — pose invisible on AnimationConstraint rigs")
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "tpose", "server did not stamp the character attribute")
+
+	-- Stop must reset the joint, not leave it frozen mid-air.
+	Remotes.StopPose.OnServerEvent:Fire(p)
+	runFrames(2)
+	local rot = rawget(joint.Transform, "_rot")
+	assertTrue(rot == nil or rotationOffDiagonal(joint.Transform) < 1e-6, "stopPose left the joint rotated")
+end)
+
+test("pose: legacy Motor6D rig still renders (back-compat)", function()
+	local p = joinPlayer(113, "Legacy113")
 	Harness.advance(0.3)
-	local c0b = (motor :: any).C0
-	local rb = rawget(c0b, "_rot")
-	assertTrue(math.abs(rb[3][1] - rot[3][1]) < 1e-6, "re-pose drifted (double-applied)")
+	local joint = addJoint(p.Character, "Motor6D", "RightShoulder", "UpperTorso", "RightUpperArm")
+
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	runFrames(10)
+	assertTrue(rotationOffDiagonal(joint.Transform) > 0.5, "Motor6D rig not rendered")
+end)
+
+test("pose: joints appearing late are found by the frame retry (spawn race)", function()
+	local p = joinPlayer(114, "LateJoints114")
+	Harness.advance(0.3)
+	local char = p.Character
+
+	-- Pose arrives the same instant the character spawns: no joints yet.
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	runFrames(5)
+
+	-- Joints spawn a moment later (real avatars build over several frames).
+	local joint = addJoint(char, "AnimationConstraint", "RightShoulder", "UpperTorso", "RightUpperArm")
+	runFrames(70) -- beyond the 60-frame retry window
+	assertTrue(rotationOffDiagonal(joint.Transform) > 0.5, "late joints never picked up — pose stuck invisible")
+end)
+
+test("pose: zero-joint rig warns once and gives up (no infinite search)", function()
+	local p = joinPlayer(115, "NoJoints115")
+	Harness.advance(0.3)
+
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	runFrames(80) -- past the retry window: the warning should have fired
+
+	-- Reconciler keeps re-setting the same pose; the gaveUp record must not
+	-- restart a 60-frame search every 2s tick. Drive more frames, state stays.
+	Harness.advance(2.5)
+	runFrames(5)
+	assertTrue(AuraService.getActivePose(p) ~= nil, "server dropped the pose (should persist)")
 end)
 
 test("pose: locked pose is rejected", function()
@@ -415,31 +465,19 @@ end)
 test("pose: R6 rig gets posed (space-named motors, derived angles)", function()
 	local p = joinPlayer(112, "SixR112")
 	Harness.advance(0.3)
-	local char = p.Character
-	local torso = Instance.new("Part")
-	torso.Name = "Torso"
-	torso.Parent = char
-	local arm = Instance.new("Part")
-	arm.Name = "Right Arm"
-	arm.Parent = char
-	local motor = Instance.new("Motor6D")
-	motor.Name = "Right Shoulder" -- R6 naming (space), not R15's RightShoulder
-	motor.Part0 = torso
-	motor.Part1 = arm
-	motor.Parent = arm
+	local joint = addJoint(p.Character, "Motor6D", "Right Shoulder", "Torso", "Right Arm")
 
 	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
-	Harness.advance(0.3)
+	runFrames(10)
+	assertTrue(rotationOffDiagonal(joint.Transform) > 0.5, "R6 rig not posed — renderer ignored space-named motors")
 
-	local c0 = (motor :: any).C0
-	local rot = rawget(c0, "_rot")
-	assertTrue(rot ~= nil, "R6 C0 has no rotation matrix")
-	local offDiagonal = math.abs(rot[1][2]) + math.abs(rot[1][3])
-		+ math.abs(rot[2][1]) + math.abs(rot[2][3])
-		+ math.abs(rot[3][1]) + math.abs(rot[3][2])
-	assertTrue(offDiagonal > 0.5, "R6 rig not posed -- animator ignored R6 motors")
-	Remotes.StopPose.OnServerEvent:Fire(p)
-	Harness.advance(0.3)
+	-- The derived R6 transform must differ from the R15 angles (R6 shoulder
+	-- pivots carry a 90-degree yaw; verbatim R15 angles would swing the arm
+	-- forward/back instead of out to the side).
+	local rot = rawget(joint.Transform, "_rot")
+	local expectedRz = math.abs(math.sin(math.rad(85))) -- |sin| of transformed z
+	assertTrue(math.abs(math.abs(rot[3][2]) - expectedRz) < 0.01 or math.abs(math.abs(rot[2][1]) - expectedRz) < 0.01,
+		"R6 angles not derived from R15 (verbatim application?)")
 end)
 
 print(("\n%d passed, %d failed"):format(passed, failedCount))

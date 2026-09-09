@@ -196,5 +196,6 @@ return {
 	},
 }
 
--- Pose tables live in PoseAnimator (server) — poses are procedural Motor6D
--- stances (see DESIGN.md §5: real animations replace these in M2).
+-- Pose angle tables live in PoseTables (shared) — poses are procedural
+-- joint rotations, rendered client-side (see DESIGN.md §5: real animations
+-- replace these in M2).

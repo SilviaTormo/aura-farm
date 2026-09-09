@@ -12,7 +12,6 @@ local Remotes = require(Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
 local MapService = require(script.Parent.MapService)
-local PoseAnimator = require(script.Parent.PoseAnimator)
 
 local AuraService = {}
 
@@ -42,9 +41,11 @@ end)
 function AuraService.setActivePose(player: Player, poseId: string | nil)
 	if poseId == nil then
 		activePoses[player.UserId] = nil
+		-- Clear both replicated signals the renderers reconcile against:
+		-- the explicit broadcast and the attribute.
 		local char = player.Character
 		if char then
-			PoseAnimator.stopPose(char)
+			char:SetAttribute("AuraPoseId", nil)
 		end
 		Remotes.PoseStopped:FireAllClients(player)
 		return
@@ -79,7 +80,10 @@ function AuraService.setActivePose(player: Player, poseId: string | nil)
 	}
 
 	if char then
-		PoseAnimator.applyPose(char, poseId)
+		-- The pose id replicates via attribute for every client's renderer;
+		-- joint Transforms are written client-side (AnimationConstraint's
+		-- Transform does not replicate, C0 is read-only).
+		char:SetAttribute("AuraPoseId", poseId)
 	end
 	Remotes.PoseStarted:FireAllClients(player, poseId)
 end
@@ -132,12 +136,13 @@ end
 
 local function onPlayerAdded(player: Player)
 	player.CharacterAdded:Connect(function(char)
-		PoseAnimator.bindPlayer(char)
-		-- A respawned character is no longer holding a pose.
+		-- A respawned character is no longer holding a pose: clear the
+		-- replicated attribute the renderers reconcile against.
+		char:SetAttribute("AuraPoseId", nil)
 		activePoses[player.UserId] = nil
 	end)
 	if player.Character then
-		PoseAnimator.bindPlayer(player.Character)
+		player.Character:SetAttribute("AuraPoseId", nil)
 	end
 
 	local leaderstats = Instance.new("Folder")

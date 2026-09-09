@@ -1,7 +1,8 @@
 --!strict
 -- PoseController.client.lua: pose input (P on PC, on-screen button on mobile),
--- pose wheel UI. Animation is applied SERVER-side by PoseAnimator so all
--- clients see every pose; this script only relays input.
+-- pose wheel UI. The server owns pose state and broadcasts PoseStarted/
+-- PoseStopped; joint rendering happens in PoseRenderer.client (client-side
+-- Transform writes — AnimationConstraint Transforms do not replicate).
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")

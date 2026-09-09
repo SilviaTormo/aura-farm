@@ -93,3 +93,18 @@ Both remaining client paths exercised in ONE Play session (log
 - Tooling note: the probe lives at tests/studio/ClientProbe.client.lua (pilot-
   only, like SmokeTest — BOTH are wired in default.project.json and BOTH must
   be removed for production builds).
+
+## 2026-09-09 — Live agent-driven session (poses actually visible)
+Root cause of "poses never visible": avatars are rigged with **AnimationConstraint**
+(2026 Avatar Joint Upgrade) — no Motor6Ds, read-only C0, Transform does not
+replicate. Server-side posing was structurally invisible. Rewired per Roblox's
+migration pattern: server keeps authority (validation, aura, PoseStarted/PoseStopped
++ character attribute), new client `PoseRenderer` writes joint Transforms every
+PreSimulation frame; `PoseTables` resolves AnimationConstraint, legacy Motor6D
+R15 and R6 rigs. Suite grew to **21/21** (mock harness bug fixed: FireAllClients
+no longer prepends the player — real Roblox passes only the payload).
+Live proof (Studio 0.737 log, session 11:40Z, avatar FicusTus):
+`[SMOKE] SUMMARY total=13 passed=13 failed=0`, rig inventory 15 AnimationConstraint
+joints, `pose "tpose" rendering ... with 2 joints`, and — after a real P keystroke +
+real wheel click — `pose "moai" rendering ... with 5 joints`
+(evidence/pose_moai_live.png).

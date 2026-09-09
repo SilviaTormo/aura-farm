@@ -194,6 +194,9 @@ end
 -- ── Instances ───────────────────────────────────────────────────
 local InstanceMethods = {}
 function InstanceMethods:IsA(className)
+	if className == "Instance" then
+		return true
+	end
 	return self._className == className
 end
 function InstanceMethods:FindFirstChild(name, recursive)
@@ -233,6 +236,16 @@ function InstanceMethods:Destroy()
 end
 function InstanceMethods:GetChildren()
 	return table.clone(self._children)
+end
+function InstanceMethods:IsDescendantOf(ancestor)
+	local cur = rawget(self, "_Parent")
+	while cur do
+		if cur == ancestor then
+			return true
+		end
+		cur = rawget(cur, "_Parent")
+	end
+	return false
 end
 
 local Instancemt = {}
@@ -297,12 +310,19 @@ Instance = {
 		}
 		if className == "RemoteEvent" then
 			inst.OnServerEvent = Signal.new()
+			inst.OnClientEvent = Signal.new()
 			function inst:FireClient(player, ...)
 				logEvent(self._Name, player, ...)
+				-- Single-machine model: connected client handlers run too, so
+				-- client modules (PoseRenderer) are testable end-to-end.
+				-- Real Roblox passes ONLY the payload on the receiving side —
+				-- the sender's player is not prepended.
+				inst.OnClientEvent:Fire(...)
 			end
 			function inst:FireAllClients(...)
 				for _, player in Players.byUserId do
 					logEvent(self._Name, player, ...)
+					inst.OnClientEvent:Fire(...)
 				end
 			end
 		end
@@ -419,6 +439,8 @@ local services = {
 		IsServer = function() return true end,
 		IsStudio = function() return false end,
 		IsClient = function() return false end,
+		-- PoseRenderer (client module) binds this; tests drive it manually.
+		PreSimulation = Signal.new(),
 	},
 	-- PoseAnimator tweens Motor6D.C0; tests apply the final value instantly.
 	TweenService = {
@@ -531,7 +553,7 @@ end
 local sharedFolder = Instance.new("Folder")
 sharedFolder.Name = "AuraFarmShared"
 sharedFolder.Parent = replicatedStorage
-for _, name in { "Config", "Remotes", "Util" } do
+for _, name in { "Config", "Remotes", "Util", "PoseTables" } do
 	makeModuleScript(name, "shared/" .. name .. ".lua").Parent = sharedFolder
 end
 
@@ -540,11 +562,21 @@ serverFolder.Name = "AuraFarmServer"
 serverFolder.Parent = serverScriptService
 for _, name in {
 	"MapService", "DataService", "AuraService", "CrowdService", "PoseService",
-	"PoseAnimator", "JudgeService", "DuelService", "TrainingService",
+	"JudgeService", "DuelService", "TrainingService",
 	"LeaderboardService", "MonetizationService", "CapturePromptService",
 } do
 	makeModuleScript(name, "server/" .. name .. ".lua").Parent = serverFolder
 end
+
+-- Client modules under StarterPlayerScripts (PoseRenderer is loadable and
+-- testable in the mock: the harness env is server-shaped, but the renderer
+-- only needs Players/RunService/ReplicatedStorage/remotes, which exist).
+local starterPlayerScripts = Instance.new("Folder")
+starterPlayerScripts.Name = "StarterPlayerScripts"
+starterPlayerScripts.Parent = game
+local poseRendererModule = makeModuleScript("PoseRenderer.client", "client/PoseRenderer.client.lua")
+poseRendererModule.Parent = starterPlayerScripts
+Harness.poseRendererModule = poseRendererModule
 
 -- Free names bound into every game module (param list of the wrapper).
 local _ENV_BINDING = {
