@@ -181,6 +181,33 @@ return {
 			cost = 15000,
 			description = "Defies gravity. And haters.",
 		} :: Pose,
+		-- Original poses with render effects (PoseTables.FX drives them).
+		{
+			id = "phantom",
+			name = "Phantom Fade 👻",
+			tier = 4,
+			rate = 6,
+			cooldown = 8,
+			cost = 12000,
+			description = "Half here, half beyond. Walks between.",
+		} :: Pose,
+		{
+			id = "ascension",
+			name = "Ascension 🕊️",
+			tier = 4,
+			rate = 6,
+			cooldown = 8,
+			cost = 15000,
+			description = "Leave the ground. Leave them speechless.",
+		} :: Pose,
+		{
+			id = "mogpose",
+			name = "MOG Pose 💀",
+			tier = 4,
+			rate = 8,
+			cooldown = 10,
+			description = "The duel-ending energy, wearable. Ends conversations.",
+		} :: Pose,
 	} :: PoseWheel,
 
 	-- Placeholder animation ids (Studio-owned placeholder; replace in M2).
@@ -197,6 +224,9 @@ return {
 		flex = "0",
 		sigma = "0",
 		sigmalean = "0",
+		phantom = "0",
+		ascension = "0",
+		mogpose = "0",
 	},
 }
 

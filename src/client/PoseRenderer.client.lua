@@ -22,6 +22,8 @@ local PoseTables = require(Shared:WaitForChild("PoseTables"))
 
 -- character -> { poseId, joints, alpha, retries, gaveUp }
 local active: { [Model]: { poseId: string, joints: { PoseTables.ResolvedJoint }, alpha: number, retries: number, gaveUp: boolean } } = {}
+-- character -> FX folder (light + aura-orb emitter) while a pose with FX holds
+local fxHolders: { [Model]: Attachment } = {}
 -- one zero-joint warning per character (not per PoseStarted)
 local warned: { [Model]: boolean } = {}
 
@@ -46,6 +48,62 @@ local function warnZeroJoints(char: Model, poseId: string)
 	end
 end
 
+-- ── Pose FX ┊ colored light + rising aura orbs, one-shot burst on lock ┊─
+local function clearFx(char: Model)
+	local holder = fxHolders[char]
+	if holder then
+		holder:Destroy()
+		fxHolders[char] = nil
+	end
+end
+
+local function applyFx(char: Model, poseId: string)
+	local spec = PoseTables.FX and PoseTables.FX[poseId]
+	if not spec then
+		return
+	end
+	clearFx(char)
+	local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+	if not root then
+		return -- rig not ready yet; the reconciler re-applies on its 2s pass
+	end
+	local holder = Instance.new("Attachment")
+	holder.Name = "AuraPoseFx"
+	holder.Parent = root :: BasePart
+	fxHolders[char] = holder
+
+	local light = Instance.new("PointLight")
+	light.Color = spec.auraColor
+	light.Brightness = spec.lightBrightness or 1
+	light.Range = spec.lightRange or 10
+	light.Parent = holder
+
+	local orbs = Instance.new("ParticleEmitter")
+	orbs.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	orbs.Color = ColorSequence.new(spec.auraColor)
+	orbs.Rate = spec.orbRate or 6
+	orbs.Speed = NumberRange.new(2, 4)
+	orbs.Lifetime = NumberRange.new(0.8, 1.5)
+	orbs.SpreadAngle = Vector2.new(25, 25)
+	orbs.Acceleration = Vector3.new(0, 6, 0) -- aura rises
+	orbs.Transparency = NumberSequence.new(0.2, 1)
+	orbs.Size = NumberSequence.new(0.35, 0.05)
+	orbs.Parent = holder
+
+	if spec.burstCount then
+		local burst = Instance.new("ParticleEmitter")
+		burst.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		burst.Color = ColorSequence.new(spec.auraColor)
+		burst.Rate = 0
+		burst.Speed = spec.burstSpeed or NumberRange.new(8, 14)
+		burst.Lifetime = NumberRange.new(0.5, 1)
+		burst.SpreadAngle = Vector2.new(180, 180)
+		burst.Parent = holder
+		burst:Emit(spec.burstCount)
+	end
+	print(("[PoseRenderer] FX %q: light + %d orbs/s%s"):format(poseId, spec.orbRate or 6, spec.burstCount and " + burst" or ""))
+end
+
 local function setPose(char: Model?, poseId: string?)
 	if not char then
 		return
@@ -62,6 +120,7 @@ local function setPose(char: Model?, poseId: string?)
 				end
 			end
 		end
+		clearFx(char)
 		active[char] = nil
 		return
 	end
@@ -105,6 +164,7 @@ local function setPose(char: Model?, poseId: string?)
 	end
 	warned[char] = nil
 	active[char] = { poseId = poseId, joints = joints, alpha = 0, retries = 0, gaveUp = false }
+	applyFx(char, poseId)
 	-- One honest log line per rendered pose: name + joint count. This is the
 	-- evidence that the client renderer actually engaged on a real rig.
 	print(("[PoseRenderer] pose %q rendering on %s with %d joints"):format(poseId, char.Name, #joints))
@@ -133,6 +193,7 @@ end)
 
 Players.PlayerRemoving:Connect(function(who)
 	setPose(who.Character, nil)
+	clearFx(who.Character)
 end)
 
 -- AuraService owns the pose lifecycle on respawn (it clears the replicated
@@ -156,6 +217,12 @@ task.spawn(function()
 		for char in active do
 			if not char:IsDescendantOf(workspace) then
 				active[char] = nil
+			end
+		end
+		-- Drop FX holders whose character is gone (respawn/left).
+		for char in fxHolders do
+			if not char:IsDescendantOf(workspace) then
+				fxHolders[char] = nil
 			end
 		end
 	end

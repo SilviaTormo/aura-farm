@@ -637,6 +637,10 @@ local _ENV_BINDING = {
 	UDim2 = UDim2,
 	UDim = UDim,
 	Vector2 = Vector2,
+	-- Particle/datatype constructors used by PoseTables.FX and the FX emitters.
+	NumberRange = { new = function(a, b) return { min = a, max = b or a } end },
+	NumberSequence = { new = function(a, b) return { a, b or a } end },
+	ColorSequence = { new = function(a, b) return { a, b or a } end },
 	TweenInfo = TweenInfo,
 	Enum = Enum,
 	task = task,
@@ -669,7 +673,8 @@ local mockOs = {
 }
 local ENV_NAMES = {
 	"game", "workspace", "script", "Instance", "Vector3", "CFrame", "Color3",
-	"UDim2", "UDim", "Vector2", "TweenInfo", "Enum", "task", "require", "os",
+	"UDim2", "UDim", "Vector2", "NumberRange", "NumberSequence", "ColorSequence",
+	"TweenInfo", "Enum", "task", "require", "os",
 	-- Standard libs passed explicitly too: identical values if the chunk env
 	-- already has them, guaranteed values if it doesn't.
 	"math", "table", "string", "pcall", "ipairs", "pairs", "tonumber",

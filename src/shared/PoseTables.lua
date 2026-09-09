@@ -107,7 +107,76 @@ PoseTables.TABLES = {
 		{ motor = "Root", rx = math.rad(-22), ry = 0, rz = 0 },
 		{ motor = "Neck", rx = math.rad(18), ry = 0, rz = 0 },
 	} :: PoseTable,
+	-- ── Originals with render effects (PoseTables.FX) ──
+	phantom = {
+		-- Drifting spirit: arms half-raised angling inward, head bowed.
+		{ motor = "RightShoulder", rx = math.rad(-30), ry = 0, rz = math.rad(-35) },
+		{ motor = "LeftShoulder", rx = math.rad(-30), ry = 0, rz = math.rad(35) },
+		{ motor = "RightElbow", rx = math.rad(-45), ry = 0, rz = 0 },
+		{ motor = "LeftElbow", rx = math.rad(-45), ry = 0, rz = 0 },
+		{ motor = "Neck", rx = math.rad(-18), ry = 0, rz = 0 },
+	} :: PoseTable,
+	ascension = {
+		-- Levitating: arms spread wide and lifted, chest open, face to the sky.
+		{ motor = "RightShoulder", rx = math.rad(-20), ry = 0, rz = math.rad(-110) },
+		{ motor = "LeftShoulder", rx = math.rad(-20), ry = 0, rz = math.rad(110) },
+		{ motor = "RightElbow", rx = math.rad(-8), ry = 0, rz = 0 },
+		{ motor = "LeftElbow", rx = math.rad(-8), ry = 0, rz = 0 },
+		{ motor = "Root", rx = math.rad(-6), ry = 0, rz = 0 },
+		{ motor = "Neck", rx = math.rad(22), ry = 0, rz = 0 },
+	} :: PoseTable,
+	mogpose = {
+		-- THE MOG, wearable: arms crossed high over the chest, chin down,
+		-- judging everyone. The duel-ending moment, held on demand.
+		{ motor = "RightShoulder", rx = math.rad(-80), ry = math.rad(25), rz = math.rad(-30) },
+		{ motor = "LeftShoulder", rx = math.rad(-80), ry = math.rad(-25), rz = math.rad(30) },
+		{ motor = "RightElbow", rx = math.rad(-115), ry = 0, rz = 0 },
+		{ motor = "LeftElbow", rx = math.rad(-115), ry = 0, rz = 0 },
+		{ motor = "Neck", rx = math.rad(-15), ry = 0, rz = 0 },
+	} :: PoseTable,
 }
+
+-- ── Per-pose render effects ─────────────────────────────────────
+-- Driven by the client renderer. A held pose gets a colored point light +
+-- rising aura orbs; a one-shot burst marks the lock (the signature moment).
+export type FxSpec = {
+	auraColor: Color3,
+	lightBrightness: number?,
+	lightRange: number?,
+	orbRate: number?, -- continuous aura orbs per second while held
+	burstCount: number?, -- one-shot particles when the pose locks
+	burstSpeed: NumberRange?,
+}
+
+local FX: { [string]: FxSpec } = {
+	phantom = {
+		auraColor = Color3.fromRGB(170, 120, 255),
+		lightBrightness = 0.6,
+		lightRange = 7,
+		orbRate = 4,
+	},
+	ascension = {
+		auraColor = Color3.fromRGB(255, 245, 200),
+		lightBrightness = 1.4,
+		lightRange = 12,
+		orbRate = 10,
+		burstCount = 40,
+		burstSpeed = NumberRange.new(4, 8),
+	},
+	mogpose = {
+		auraColor = Color3.fromRGB(255, 120, 60),
+		lightBrightness = 2.2,
+		lightRange = 16,
+		orbRate = 14,
+		burstCount = 70,
+		burstSpeed = NumberRange.new(10, 18),
+	},
+}
+PoseTables.FX = FX
+
+function PoseTables.getFx(poseId: string): FxSpec?
+	return FX[poseId]
+end
 
 function PoseTables.get(poseId: string): PoseTable?
 	return PoseTables.TABLES[poseId]

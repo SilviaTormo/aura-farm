@@ -699,6 +699,32 @@ test("crowd: NPCs exist and stop hyping when nobody poses", function()
 	assertTrue(Harness.lastEvent("AuraChanged") == nil, "aura paid while nobody was posing")
 end)
 
+test("pose catalog contract: every Config pose has angles, FX poses have effects", function()
+	for _, pose in Config.POSES do
+		local table = PoseTables.get(pose.id)
+		assertTrue(table ~= nil and #table > 0, "pose '" .. pose.id .. "' has no angle table (invisible in game!)")
+		local fx = PoseTables.getFx(pose.id)
+		if fx then
+			assertTrue(fx.auraColor ~= nil, "FX for '" .. pose.id .. "' missing auraColor")
+			if fx.burstCount then
+				assertTrue(fx.burstSpeed ~= nil, "FX for '" .. pose.id .. "' has burstCount but no burstSpeed")
+			end
+			assertTrue(fx.lightBrightness == nil or fx.lightBrightness > 0, "FX for '" .. pose.id .. "' has non-positive lightBrightness")
+		end
+	end
+	-- And the reverse: every angle table maps to a real Config pose (no orphans).
+	for poseId, _ in PoseTables.TABLES do
+		local found = false
+		for _, pose in Config.POSES do
+			if pose.id == poseId then
+				found = true
+				break
+			end
+		end
+		assertTrue(found, "PoseTables has angles for '" .. poseId .. "' but Config.POSES does not list it")
+	end
+end)
+
 test("pose: R6 rig gets posed (space-named motors, derived angles)", function()
 	local p = joinPlayer(112, "SixR112")
 	Harness.advance(0.3)

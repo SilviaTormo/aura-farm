@@ -28,6 +28,18 @@ el nuevo y abre la versión buena. Siempre.
 
 4. Para salir de la partida: **ESC → Stop** (o Mayús+F5).
 
+## Poses con efectos (las nuevas originales)
+
+En la tienda (B) hay 3 poses nuevas con efectos visuales al posar:
+
+   | Pose | Efecto |
+   |------|--------|
+   | 👻 **Phantom Fade** | Aura violeta flotando + luz espectral mientras sostienes la pose |
+   | 🕊️ **Ascension** | Explosión dorada al posar + luz intensa + aura flotando hacia arriba |
+   | 💀 **MOG Pose** | LA pose del remate: explosión naranja grande, luz potente y aura en llamas. La más costosa (ganancia 8x) |
+
+Pruébalas gratis desde la tienda: fila **"PILOTO: PRUÉBALO GRATIS"** → botón dorado.
+
 ## ¿Quieres probar el modo 2 jugadores (duelos)?
 
 En Studio: pestaña **TEST (Prueba)** → sección **Clients and Servers** →
