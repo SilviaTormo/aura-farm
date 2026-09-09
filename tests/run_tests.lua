@@ -384,8 +384,14 @@ test("training: digit keys pick the Nth shown pose (keyboard picker)", function(
 		KeyCode = Harness.Enum.KeyCode.Two,
 	})
 	assertEq(p.Character:GetAttribute("AuraPoseId"), "moai", "digit 2 did not pick the 2nd picker pose")
+	-- Switch mid-round: pressing 1 re-locks the 1st pose (re-picks are the
+	-- point of the picker; the judge scores the last pose held).
+	Harness.fireContextAction("TrainingPickDigit", Harness.Enum.UserInputState.Begin, {
+		KeyCode = Harness.Enum.KeyCode.One,
+	})
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "tpose", "re-pick did not switch the pose mid-round")
 	-- Digit 9 with only 2 poses shown: pass-through, pose unchanged. A fresh
-	-- round: the open one already has a pose locked (server rejects re-picks).
+	-- round for a clean state.
 	Harness.advance(8.2) -- closes the round + 12s busy guard via more advance below
 	Harness.advance(12.1) -- clears the CAS busy debounce and the pad cooldown
 	Remotes.TrainingStart.OnServerEvent:Fire(p)

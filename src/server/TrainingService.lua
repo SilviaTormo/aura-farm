@@ -180,13 +180,13 @@ local function onTrainingPick(player: Player, poseId: string)
 	if os.clock() > current.endsAt then
 		return -- window closed
 	end
-	if current.poseId then
-		return -- already locked
-	end
 	local pose = findPose(poseId)
 	if not pose or not DataService.isUnlocked(player, poseId) then
 		return
 	end
+	-- Re-picks re-lock (switching poses mid-round is the point of the
+	-- picker): the judge scores the LAST pose held, which is also the one
+	-- visible on the avatar. Timing bonus follows the final lock.
 	current.poseId = poseId
 	current.lockedAt = os.clock()
 	-- Show the pose on the avatar like the pose wheel does — but visual-only
