@@ -361,6 +361,41 @@ test("training: pad session runs, result fires, aura only on win", function()
 	end
 end)
 
+test("training: digit keys pick the Nth shown pose (keyboard picker)", function()
+	local p = joinPlayer(402, "Keyer402")
+	Harness.advance(0.3)
+	-- TrainingUi binds to Players.LocalPlayer and PlayerGui at require time.
+	local playerGui = Instance.new("Folder")
+	playerGui.Name = "PlayerGui"
+	playerGui.Parent = p
+	Harness.Players.LocalPlayer = p
+	local TrainingUi = Harness.requireModule(Harness.trainingUiModule)
+	local _ = TrainingUi
+	-- Own exactly two poses; picker order follows Config.POSES order.
+	DataService.unlockPose(p, "tpose")
+	DataService.unlockPose(p, "moai")
+	-- Server pushes the unlock list the way join does; the picker builds from it.
+	Remotes.SyncUnlocked:FireClient(p, { "tpose", "moai" })
+	-- Open a round so the picker is populated.
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Harness.advance(0.1)
+	-- Press digit 2: fires TrainingPick (the exact button packet) -> moai renders.
+	Harness.fireContextAction("TrainingPickDigit", Harness.Enum.UserInputState.Begin, {
+		KeyCode = Harness.Enum.KeyCode.Two,
+	})
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "moai", "digit 2 did not pick the 2nd picker pose")
+	-- Digit 9 with only 2 poses shown: pass-through, pose unchanged. A fresh
+	-- round: the open one already has a pose locked (server rejects re-picks).
+	Harness.advance(8.2) -- closes the round + 12s busy guard via more advance below
+	Harness.advance(12.1) -- clears the CAS busy debounce and the pad cooldown
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Harness.advance(0.1)
+	Harness.fireContextAction("TrainingPickDigit", Harness.Enum.UserInputState.Begin, {
+		KeyCode = Harness.Enum.KeyCode.Nine,
+	})
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "digit 9 picked a pose with only 2 shown (should pass through)")
+end)
+
 test("data: save/load round-trip preserves aura + unlocks", function()
 	local p = joinPlayer(301, "Saver301")
 	Harness.advance(0.3)

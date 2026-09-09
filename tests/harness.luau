@@ -308,6 +308,11 @@ Instance = {
 			Touched = Signal.new(),
 			CharacterAdded = Signal.new(),
 		}
+		if className == "TextButton" or className == "ImageButton" then
+			-- GUI buttons carry click signals (TrainingUi picker binds them).
+			inst.MouseButton1Click = Signal.new()
+			inst.Activated = Signal.new()
+		end
 		if className == "RemoteEvent" then
 			inst.OnServerEvent = Signal.new()
 			inst.OnClientEvent = Signal.new()
@@ -324,6 +329,13 @@ Instance = {
 					logEvent(self._Name, player, ...)
 					inst.OnClientEvent:Fire(...)
 				end
+			end
+			function inst:FireServer(...)
+				-- Client->server: real Roblox prepends the LocalPlayer on the
+				-- receiving side (OnServerEvent handlers always get player first).
+				local lp = Players.LocalPlayer
+				logEvent(self._Name, lp, ...)
+				inst.OnServerEvent:Fire(lp, ...)
 			end
 		end
 		return setmetatable(inst, Instancemt)
@@ -386,6 +398,9 @@ DataStoreService = {
 -- the methods below all share one variable)
 Players = {
 	byUserId = {},
+	-- The client view (TrainingUi binds to it at require time); tests point
+	-- it at the player under test before requiring a client UI module.
+	LocalPlayer = nil :: any,
 	PlayerAdded = Signal.new(),
 	PlayerRemoving = Signal.new(),
 	GetPlayers = function()
@@ -462,6 +477,19 @@ local services = {
 		UserOwnsGamePassAsync = function() return false end,
 	},
 	CaptureService = {},
+	-- Client controls bind through ContextActionService (the T key already
+	-- does); tests fire bound handlers via fireContextAction.
+	ContextActionService = {
+		boundActions = {},
+		BindAction = function(self, name, fn, createTouchButton, ...)
+			self.boundActions[name] = { fn = fn, keys = { ... } }
+		end,
+		UnbindAction = function(self, name)
+			self.boundActions[name] = nil
+		end,
+		SetTitle = function() end,
+		SetPosition = function() end,
+	},
 }
 local bindToCloseFns = {}
 local game = {
@@ -473,6 +501,15 @@ local game = {
 	end,
 }
 Harness.bindToCloseFns = bindToCloseFns
+-- Fires a ContextActionService-bound handler the way the engine would
+-- (actionName, state, input). Returns the handler's result.
+function Harness.fireContextAction(name, state, input)
+	local action = services.ContextActionService.boundActions[name]
+	if not action then
+		error("no bound ContextActionService action named " .. tostring(name))
+	end
+	return action.fn(name, state, input)
+end
 
 local workspace = Instance.new("Workspace")
 local replicatedStorage = Instance.new("ReplicatedStorage")
@@ -577,6 +614,9 @@ starterPlayerScripts.Parent = game
 local poseRendererModule = makeModuleScript("PoseRenderer.client", "client/PoseRenderer.client.lua")
 poseRendererModule.Parent = starterPlayerScripts
 Harness.poseRendererModule = poseRendererModule
+local trainingUiModule = makeModuleScript("TrainingUi.client", "client/TrainingUi.client.lua")
+trainingUiModule.Parent = starterPlayerScripts
+Harness.trainingUiModule = trainingUiModule
 
 -- Free names bound into every game module (param list of the wrapper).
 local _ENV_BINDING = {
@@ -670,6 +710,7 @@ Harness.Players = Players
 Harness.makePlayer = makePlayer
 Harness.services = services
 Harness.Instance = Instance
+Harness.Enum = Enum
 Harness.Vector3 = Vector3
 Harness.CFrame = CFrame
 Harness.os = mockOs

@@ -128,3 +128,15 @@ before the round is suspended while the training pose shows, and restored after
 (priorPoseId). Suite test upgraded to assert the real contract (was picking an
 UNLOCKED pose — the silent rejection that hid the bug): unlock -> pick -> attribute
 stamped -> cleared at round end. 21/21 green.
+
+## 2026-09-09 — Keyboard training picker (digits 1-9)
+User request: the training picker should also work from the keyboard. Each owned
+pose button now shows a number badge (its position in the picker, which only
+lists owned poses), and pressing that digit fires the exact TrainingPick packet
+the button fires. Round banner says "click or press 1-9". Digit resolution uses
+KeyCode.Name (One..Nine), so behavior is identical on real KeyCodes. Suite
+grown to 22/22: the new test binds through the harness's ContextActionService
+mock, opens a round, presses digit 2 (picks moai end-to-end) and digit 9
+(passes through with 2 poses shown). Harness gained: CAS mock + fireContextAction,
+LocalPlayer slot, FireServer (prepends the LocalPlayer like real Roblox),
+GUI-button signals, Enum exposure.

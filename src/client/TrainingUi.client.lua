@@ -81,7 +81,11 @@ pickerLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 pickerLayout.Padding = UDim.new(0, 8)
 pickerLayout.Parent = picker
 
+-- Owned poses in picker order; index i is picked by pressing the key i.
+local pickerPoses: { any } = {}
+
 local function buildPicker()
+	table.clear(pickerPoses)
 	for _, child in picker:GetChildren() do
 		if child:IsA("TextButton") then
 			child:Destroy()
@@ -89,11 +93,26 @@ local function buildPicker()
 	end
 	for _, pose in Config.POSES do
 		if owned[pose.id] then
+			table.insert(pickerPoses, pose)
 			local btn = Instance.new("TextButton")
 			btn.Name = "Train_" .. pose.id
 			btn.Size = UDim2.new(0, 92, 0, 44)
 			btn.BackgroundColor3 = Color3.fromRGB(60, 90, 70)
 			btn.Text = pose.name
+			-- Number badge: pressing that digit picks this pose (same as click).
+			local badge = Instance.new("TextLabel")
+			badge.Size = UDim2.new(0, 18, 0, 18)
+			badge.Position = UDim2.new(0, 4, 0, 4)
+			badge.BackgroundColor3 = Color3.fromRGB(20, 25, 20)
+			badge.BackgroundTransparency = 0.25
+			badge.TextColor3 = Color3.new(1, 1, 1)
+			badge.Font = Enum.Font.GothamBold
+			badge.TextSize = 12
+			badge.Text = tostring(#pickerPoses)
+			badge.Parent = btn
+			local badgeCorner = Instance.new("UICorner")
+			badgeCorner.CornerRadius = UDim.new(1, 0)
+			badgeCorner.Parent = badge
 			btn.TextColor3 = Color3.new(1, 1, 1)
 			btn.Font = Enum.Font.GothamBold
 			btn.TextScaled = true
@@ -109,8 +128,35 @@ local function buildPicker()
 	end
 end
 
+-- Digits 1..9 pick the Nth shown pose while a round is open (the same packet
+-- as clicking the button) — keyboard play for the training picker. Bound after
+-- buildPicker/showBanner exist so the handler captures real upvalues. Digit
+-- comes from the key's name ("One".."Nine"), which reads the same in every
+-- environment that names KeyCodes the Roblox way.
+local DIGIT_INDEX = {
+	One = 1, Two = 2, Three = 3, Four = 4, Five = 5,
+	Six = 6, Seven = 7, Eight = 8, Nine = 9,
+}
+ContextActionService:BindAction("TrainingPickDigit", function(_, state, input)
+	if state ~= Enum.UserInputState.Begin then
+		return Enum.ContextActionResult.Pass
+	end
+	local keyName = input and input.KeyCode and input.KeyCode.Name
+	local digit = keyName and DIGIT_INDEX[keyName]
+	if digit == nil then
+		return Enum.ContextActionResult.Pass
+	end
+	local pose = pickerPoses[digit]
+	if pose == nil then
+		return Enum.ContextActionResult.Pass
+	end
+	Remotes.TrainingPick:FireServer(pose.id)
+	showBanner("POSE LOCKED: " .. pose.name, 1.2, Color3.fromRGB(120, 255, 140))
+	return Enum.ContextActionResult.Sink
+end, false, Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five, Enum.KeyCode.Six, Enum.KeyCode.Seven, Enum.KeyCode.Eight, Enum.KeyCode.Nine)
+
 Remotes.TrainingRound.OnClientEvent:Connect(function(seconds: number)
-	showBanner("🥋 TRAINING — PICK A POSE! (" .. seconds .. "s)", seconds)
+	showBanner("🥋 TRAINING — PICK A POSE! (" .. seconds .. "s) — click or press 1-9", seconds)
 	buildPicker()
 	picker.Visible = true
 	task.delay(seconds, function()

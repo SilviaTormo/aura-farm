@@ -21,6 +21,7 @@ el nuevo y abre la versión buena. Siempre.
    |-------|----------|
    | **P** | Posar: los NPCs te vitorean y ganas aura. Para DEJAR de posar: P otra vez y vuelve a tocar tu pose actual |
    | **T** | Entrenar (ronda de poses con jurado, también vale pisar el pad verde TRAIN) |
+   | **1-9** | Durante el entrenamiento: elegir la pose numerada (cada botón muestra su número) |
    | **B** | Tienda (comprar poses nuevas con aura) |
    | **M** | MOG / duelos (contra otros jugadores O contra NPCs; para jugar solo) |
    | **P** (otra vez) | Cerrar la rueda de poses |
