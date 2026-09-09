@@ -122,7 +122,7 @@ local function refreshInfo()
 	end
 	local cost = Config.REBIRTH_BASE_COST * (rebirths + 1)
 	local nextMult = 1 + rebirths * Config.REBIRTH_MULTIPLIER_STEP + Config.REBIRTH_MULTIPLIER_STEP
-	info.Text = ("Rebirth #%d costs %d aura.\n\nYou lose ALL your aura (poses and wins stay), but your aura gain becomes PERMANENT %s.\n\nYou have: %d aura")
+	info.Text = ("Rebirth #%d costs %d aura.\n\nYou lose ALL your aura (poses and wins stay), but your aura gain becomes PERMANENT %s.\n\nYou have: %d aura\n[R] confirm · [Esc] cancel")
 		:format(rebirths + 1, cost, formatMult(nextMult), auraNow)
 	yes.BackgroundColor3 = auraNow >= cost and Color3.fromRGB(140, 70, 220) or Color3.fromRGB(80, 50, 60)
 end
@@ -146,13 +146,29 @@ end)
 
 ContextActionService:BindAction("OpenRebirth", function(_, state)
 	if state == Enum.UserInputState.Begin then
-		refreshAuraNow()
-		refreshInfo()
-		panel.Visible = not panel.Visible
+		if panel.Visible then
+			-- R again = confirm (keyboard-only path; Esc or "Not yet" cancels).
+			Remotes.RebirthRequest:FireServer()
+			panel.Visible = false
+		else
+			refreshAuraNow()
+			refreshInfo()
+			panel.Visible = true
+		end
 	end
 	return Enum.ContextActionResult.Sink
 end, true, Enum.KeyCode.R)
 ContextActionService:SetTitle("OpenRebirth", "REBIRTH")
+
+-- Esc closes the prompt without sinking the key when it's not open
+-- (Roblox's own menu keeps working).
+ContextActionService:BindAction("CloseRebirth", function(_, state)
+	if state == Enum.UserInputState.Begin and panel.Visible then
+		panel.Visible = false
+		return Enum.ContextActionResult.Sink
+	end
+	return Enum.ContextActionResult.Pass
+end, false, Enum.KeyCode.Escape)
 
 -- ── Event banners ┊──────────────────────────────────────────────
 local banner = Instance.new("TextLabel")
