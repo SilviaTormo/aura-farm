@@ -7,6 +7,7 @@
 -- publishing (remove one entry in init.server.lua).
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local Shared = game.ReplicatedStorage.AuraFarmShared
 local Config = require(Shared.Config)
@@ -17,6 +18,15 @@ local DataService = require(script.Parent.DataService)
 local PoseService = require(script.Parent.PoseService)
 
 local DevShopService = {}
+
+-- Gate: grants require BOTH the Config flag AND Studio, evaluated per
+-- request. Two independent switches so a published server can never serve
+-- free perks, even if a pilot build with the flag on is accidentally
+-- published — IsStudio() is false on real servers no matter what Config says.
+local function gateOpen(): boolean
+	return Config.DEV_SHOP_ENABLED == true and RunService:IsStudio()
+end
+local warned = false
 
 -- The dev shop calls the SAME grant functions MonetizationService uses for
 -- real purchases, so what you try here behaves identically to the real thing.
@@ -64,6 +74,13 @@ end
 function DevShopService.init()
 	Remotes.DevShopTry.OnServerEvent:Connect(function(player, key)
 		if typeof(key) ~= "string" then
+			return
+		end
+		if not gateOpen() then
+			if not warned then
+				warned = true
+				warn("[DEV-SHOP] grant refused: gate is closed (needs DEV_SHOP_ENABLED + Studio)")
+			end
 			return
 		end
 		DevShopService.grant(player, key)

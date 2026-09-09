@@ -43,6 +43,7 @@ for _, name in {
 	"MapService", "DataService", "AuraService", "CrowdService", "PoseService",
 	"JudgeService", "DuelService", "TrainingService",
 	"LeaderboardService", "MonetizationService", "CapturePromptService",
+	"DevShopService",
 } do
 	startService(name)
 end
@@ -571,12 +572,55 @@ test("data: SECOND save of a returning player actually persists (lock-baseline f
 	local store = Harness.services.DataStoreService.stores["AuraFarm_v1"]
 	assertTrue(store ~= nil, "store missing")
 	local saved = store.data["player_301"]
-	assertTrue(saved ~= nil, "second save vanished (session-lock aborted it)")
-	assertEq(saved.aura, 778, "second save did not persist the new aura")
+	assertTrue(saved ~= nil, "second save vanished (session-lock aborted it)")		assertEq(saved.aura, 778, "second save did not persist the new aura")
+end)
+
+test("devshop: gate OPEN grants through the real remote", function()
+	-- Suite harness runs IsStudio()=false, so the server gate is shut by
+	-- default — exactly what a published server must see. Flip the flag AND
+	-- make IsStudio true (what Studio Play looks like) for this test.
+	local RunService = Harness.services.RunService
+	local wasStudio = RunService.IsStudio
+	RunService.IsStudio = function() return true end
+	Config.DEV_SHOP_ENABLED = true
+	local p = joinPlayer(505, "Pilot505")
+	Harness.advance(0.3)
+
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "SigmaPosePack")
+	DataService.unlockPose(p, "sigma") -- grant calls unlockPose; make it valid
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "SigmaPosePack")
+	assertTrue(p.Character:GetAttribute("AuraPoseId") == nil, "dev grant should not pose the avatar")
+	local unlocked = Harness.lastEvent("PoseUnlocked", p)
+	assertTrue(unlocked ~= nil and unlocked.args[1] == "sigma", "gate OPEN: SIGMA grant did not arrive")
+
+	RunService.IsStudio = wasStudio
+	Config.DEV_SHOP_ENABLED = false
+end)
+
+test("devshop: gate CLOSED refuses grants (published-server safety)", function()
+	-- Restore the real published-server conditions: flag off, IsStudio false.
+	Config.DEV_SHOP_ENABLED = false
+	local RunService = Harness.services.RunService
+	local wasStudio = RunService.IsStudio
+	RunService.IsStudio = function() return false end
+	local p = joinPlayer(506, "Hacker506")
+	Harness.advance(0.3)
+	local unlockedBefore = #Harness.eventsFor("PoseUnlocked", p)
+
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "SigmaPosePack")
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "PartyMode")
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "DoubleAura")
+	assertEq(#Harness.eventsFor("PoseUnlocked", p), unlockedBefore, "gate CLOSED: SIGMA was granted anyway!")
+	local stat = auraStat(p)
+	assertTrue(stat:GetAttribute("DoubleAura") ~= true, "gate CLOSED: 2x Aura was granted anyway!")
+
+	RunService.IsStudio = wasStudio
 end)
 
 test("npc duel: solo best-of-5 vs rival with bounty + rival released", function()
-	local solo = joinPlayer(501, "Solo501")
+	-- Fresh userId: 501 is held by the monetization test's player, and the
+	-- exact bounty assertion below needs a profile with no carried-over aura.
+	local solo = joinPlayer(510, "Solo510")
 	Harness.advance(0.5)
 	DataService.addAura(solo, 3000) -- enough to buy kat
 	Remotes.BuyPose.OnServerEvent:Fire(solo, "kata")

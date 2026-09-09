@@ -608,6 +608,7 @@ for _, name in {
 	"MapService", "DataService", "AuraService", "CrowdService", "PoseService",
 	"JudgeService", "DuelService", "TrainingService",
 	"LeaderboardService", "MonetizationService", "CapturePromptService",
+	"DevShopService",
 } do
 	makeModuleScript(name, "server/" .. name .. ".lua").Parent = serverFolder
 end

@@ -50,6 +50,10 @@ return {
 
 	-- Monetization (M3): replace the 0s with real IDs from the Creator Dashboard.
 	-- With id = 0 the purchase prompt is skipped and the item shows as "coming soon".
+	-- DEV_SHOP_ENABLED gates DevShopService (free simulated purchases). Server-side
+	-- grants ALSO require RunService:IsStudio(), so flipping this on can never
+	-- leak perks in a published server. Default off.
+	DEV_SHOP_ENABLED = false,
 	GAMEPASSES = {
 		DoubleAura = 0,
 		VipPlaza = 0,

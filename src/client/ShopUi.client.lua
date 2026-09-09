@@ -4,6 +4,7 @@
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local Shared = game.ReplicatedStorage.AuraFarmShared
 local Config = require(Shared.Config)
@@ -269,7 +270,9 @@ buildProductRow("PartyMode", "🎉 PARTY MODE x2 (server, 10 min)")
 scroll.CanvasSize = UDim2.new(0, 0, 0, (#Config.POSES + #Config.PASS_INFO + 3) * 64)
 
 -- Dev strip buttons: same grant the real purchase gives, zero Robux.
-local DEV_ITEMS = {
+-- Hidden entirely when not in Studio: outside, the server refuses every
+-- grant, so showing the strip would be a lie.
+local DEV_ITEMS = (RunService:IsStudio() and Config.DEV_SHOP_ENABLED) and {
 	{ key = "DoubleAura", label = "⚡2x" },
 	{ key = "VipPlaza", label = "👑VIP" },
 	{ key = "SigmaPosePack", label = "🗿SIGMA" },
@@ -277,7 +280,7 @@ local DEV_ITEMS = {
 	{ key = "MogShield", label = "🛡️SHIELD" },
 	{ key = "CooldownRefill", label = "⚡REFILL" },
 	{ key = "PartyMode", label = "🎉PARTY" },
-}
+} or nil
 local devGrid = Instance.new("UIGridLayout")
 devGrid.CellSize = UDim2.new(0, 86, 0, 20)
 devGrid.CellPadding = UDim2.new(0, 4, 0, 3)
@@ -287,7 +290,7 @@ devGrid.VerticalAlignment = Enum.VerticalAlignment.Center
 devGrid.SortOrder = Enum.SortOrder.LayoutOrder
 devGrid.Parent = devBar
 local devIndex = 0
-for _, item in DEV_ITEMS do
+for _, item in (DEV_ITEMS or {}) do
 	devIndex += 1
 	local b = Instance.new("TextButton")
 	b.Name = "DevTry_" .. item.key
