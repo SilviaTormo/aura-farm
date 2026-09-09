@@ -108,3 +108,13 @@ Live proof (Studio 0.737 log, session 11:40Z, avatar FicusTus):
 joints, `pose "tpose" rendering ... with 2 joints`, and — after a real P keystroke +
 real wheel click — `pose "moai" rendering ... with 5 joints`
 (evidence/pose_moai_live.png).
+
+## 2026-09-09 — White-out fix (lighting)
+User screenshot: avatar + map pure white. Cause: the place ships Studio default
+Lighting (Brightness ~3.1, EnvironmentDiffuse/SpecularScale = 0) and no code ever
+configured it — harsh direct sun blew every material to white. Fix: MapService.init
+now applies a stylized late-afternoon setup (Brightness 2.2, env scales 0.65/0.45,
+OutdoorAmbient, ClockTime 15.5, shadows + mild bloom) and prints
+`[MapService] lighting applied`. Live session log confirms the line; frame analysis
+of evidence/light_check.png: ground luma 255→~148 with green tint present
+(avg RGB c6e9e4) and shadow structure visible. Suite 21/21; build 14:06.

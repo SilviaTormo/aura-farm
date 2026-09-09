@@ -151,6 +151,28 @@ end
 
 function MapService.init(root: Instance?)
 	root = root or workspace
+	-- ── Lighting ──────────────────────────────────────────────────
+	-- The baseplate ships with Studio defaults (Brightness ~3.1, environment
+	-- scales 0, harsh direct sun) that blow the map out to pure white — the
+	-- avatar and grass rendered as silhouettes on a white page. A stylized
+	-- late-afternoon setup reads warm and keeps materials visible.
+	local lighting = game:GetService("Lighting")
+	lighting.Brightness = 2.2
+	lighting.EnvironmentDiffuseScale = 0.65
+	lighting.EnvironmentSpecularScale = 0.45
+	lighting.OutdoorAmbient = Color3.fromRGB(115, 120, 135)
+	lighting.ClockTime = 15.5
+	lighting.GeographicLatitude = 25
+	lighting.GlobalShadows = true
+	if lighting:FindFirstChild("Bloom") == nil then
+		local bloom = Instance.new("BloomEffect")
+		bloom.Intensity = 0.4
+		bloom.Size = 24
+		bloom.Threshold = 0.85
+		bloom.Parent = lighting
+	end
+	print(("[MapService] lighting applied: Brightness=%.1f ClockTime=%.1f"):format(lighting.Brightness, lighting.ClockTime))
+
 	local folder = Instance.new("Folder")
 	folder.Name = "AuraFarmMap"
 	folder.Parent = root
