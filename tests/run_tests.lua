@@ -396,6 +396,69 @@ test("training: digit keys pick the Nth shown pose (keyboard picker)", function(
 	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "digit 9 picked a pose with only 2 shown (should pass through)")
 end)
 
+test("training: farming pose restored after round (attribute + economy resume)", function()
+	local p = joinPlayer(403, "Farmer403")
+	Harness.advance(0.3)
+	DataService.unlockPose(p, "wave")
+	DataService.unlockPose(p, "moai")
+	placeAt(p, Vector3.new(0, 3.5, 0)) -- fountain plaza: crowd pays ambient aura
+
+	-- The pad is a single global slot: flush any unpicked round a previous
+	-- test left pending so TrainingStart below isn't bounced with "busy".
+	Harness.advance(8.2)
+
+	-- Farming with the wheel first: a real paid pose. Payment is asserted
+	-- through grantTick — the exact function the live loop calls each second
+	-- with the crowd count — because NPC walk timing makes real crowds flaky
+	-- in suite order.
+	Remotes.RequestPose.OnServerEvent:Fire(p, "wave")
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "wave", "farm pose not active before training")
+	assertTrue(AuraService.getActivePose(p) ~= nil, "farm pose has no economy entry")
+	AuraService.grantTick(p, 5)
+	local auraBefore = auraStat(p).Value
+	assertTrue(auraBefore > 0, "farming pose paid nothing (setup broken)")
+
+	-- Enter training and lock a different pose: farm entry must suspend.
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Remotes.TrainingPick.OnServerEvent:Fire(p, "moai")
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "moai", "training pose did not replace the farm pose visually")
+	assertTrue(AuraService.getActivePose(p) == nil, "training pick did not suspend the farm economy entry")
+	AuraService.grantTick(p, 5)
+	assertTrue(auraStat(p).Value == auraBefore, "suspended farm pose still paid aura during training")
+
+	-- Round end: prior pose restored visibly AND its economy entry live again.
+	Harness.advance(8.3)
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "wave", "farm pose not restored after training round")
+	local resumed = AuraService.getActivePose(p)
+	assertTrue(resumed ~= nil, "restored farm pose has no economy entry")
+	assertEq(resumed and resumed.poseId, "wave", "wrong pose restored in the economy entry")
+	AuraService.grantTick(p, 5)
+	assertTrue(auraStat(p).Value > auraBefore, "restored farm pose did not resume paying aura")
+end)
+
+test("training: pose-less round end restores nothing (guard no-op)", function()
+	local p = joinPlayer(404, "Idle404")
+	Harness.advance(0.3)
+	DataService.unlockPose(p, "tpose")
+
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Harness.advance(0.1)
+	-- Never pick: the round must end with no pose and no economy entry.
+	Harness.advance(8.2)
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "pose-less round end stamped a pose attribute")
+	assertTrue(AuraService.getActivePose(p) == nil, "pose-less round end created an economy entry")
+
+	-- Same guard after the player later stops a wheel pose (record path ran).
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	Remotes.StopPose.OnServerEvent:Fire(p)
+	Harness.advance(0.1)
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "stopPose left the attribute stamped")
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Harness.advance(8.3)
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "round end restored a stopped pose")
+	assertTrue(AuraService.getActivePose(p) == nil, "round end resurrected a stopped economy entry")
+end)
+
 test("data: save/load round-trip preserves aura + unlocks", function()
 	local p = joinPlayer(301, "Saver301")
 	Harness.advance(0.3)
