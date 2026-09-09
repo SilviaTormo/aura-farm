@@ -94,16 +94,23 @@ local function runChest()
 	end)
 end
 
+-- Start a specific event now; used by init's scheduler and available as a
+-- future admin/force hook (server module, unreachable from clients).
+function EventService.forceEvent(kind: string): string
+	if kind == "auraRain" then
+		runAuraRain()
+	else
+		runChest()
+	end
+	return kind
+end
+
 function EventService.init()
 	task.spawn(function()
 		-- First event a couple of minutes in, then random gaps.
 		task.wait(Config.EVENT_MIN_GAP)
 		while true do
-			if math.random() < 0.5 then
-				runAuraRain()
-			else
-				runChest()
-			end
+			EventService.forceEvent(math.random() < 0.5 and "auraRain" or "chest")
 			-- Wait for the event to finish, then a random gap until the next.
 			while eventRunning do
 				task.wait(1)

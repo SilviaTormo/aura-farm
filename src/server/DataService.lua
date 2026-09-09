@@ -103,6 +103,19 @@ function DataService.setRebirths(player: Player, count: number)
 	local profile = profiles[player.UserId]
 	if profile then
 		profile.rebirths = math.max(0, math.floor(count))
+		-- Create-or-update the public leaderstats row: it's created in a
+		-- PlayerAdded handler elsewhere, so an early rebirth (or test timing)
+		-- can beat its creation — and afterwards this is the only writer.
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if leaderstats then
+			local stat = leaderstats:FindFirstChild("Rebirths")
+			if not stat then
+				stat = Instance.new("IntValue")
+				stat.Name = "Rebirths"
+				stat.Parent = leaderstats
+			end
+			stat.Value = profile.rebirths
+		end
 	end
 end
 

@@ -83,7 +83,7 @@ local function placeAt(player, position)
 end
 
 -- ════════════════════════════════════════════════════════════════
-test("boot: all 12 services init without error", function()
+test("boot: all 14 services init without error", function()
 	assertTrue(true) -- reaching here means boot was clean
 end)
 
@@ -742,6 +742,86 @@ test("pose: R6 rig gets posed (space-named motors, derived angles)", function()
 	local expectedRz = math.abs(math.sin(math.rad(85))) -- |sin| of transformed z
 	assertTrue(math.abs(math.abs(rot[3][2]) - expectedRz) < 0.01 or math.abs(math.abs(rot[2][1]) - expectedRz) < 0.01,
 		"R6 angles not derived from R15 (verbatim application?)")
+end)
+
+test("rebirth: grants permanent multiplier and resets aura (poses kept)", function()
+	local RebirthService = Harness.requireModule(serverFolder:FindFirstChild("RebirthService"))
+	local p = joinPlayer(520, "Farmer520")
+	Harness.advance(0.3)
+
+	-- Can't rebirth with nothing in the bank...
+	Remotes.RebirthRequest.OnServerEvent:Fire(p)
+	assertTrue(DataService.getRebirths(p) == 0, "rebirth succeeded for free!")
+
+	-- ...and the gate uses SPENDABLE aura, so a big spendable means a real reset.
+	DataService.addAura(p, Config.REBIRTH_BASE_COST) -- exactly rebirth #1's cost
+	Remotes.RebirthRequest.OnServerEvent:Fire(p)
+	assertTrue(DataService.getRebirths(p) == 1, "rebirth #1 did not register")
+	assertTrue(DataService.getSpendableAura(p) == 0, "aura not reset by rebirth")
+	local stat = p:FindFirstChild("leaderstats") and p:FindFirstChild("leaderstats"):FindFirstChild("Rebirths")
+	assertTrue(stat ~= nil and stat.Value == 1, "leaderstats.Rebirths stale after rebirth")
+
+	-- The permanent payoff: the multiplier source everyone reads (grantTick,
+	-- HUD, confirm prompt) pays +25% over the no-rebirth baseline.
+	assertTrue(RebirthService.getMultiplier(p) == 1.25, "multiplier not 1.25 after rebirth #1")
+
+	-- Poses survive the reset: tpose was already unlocked, still is.
+	local profile = DataService.getProfile(p)
+	assertTrue(table.find(profile.unlocked, "tpose") ~= nil, "rebirth wiped pose unlocks")
+end)
+
+test("events: forced Aura Rain doubles the aura tick until it expires", function()
+	local EventService = Harness.requireModule(serverFolder:FindFirstChild("EventService"))
+	local p = joinPlayer(521, "Rainy521")
+	Harness.advance(1) -- let NPCs settle
+	placeAt(p, Vector3.new(0, 3.5, 0))
+
+	EventService.forceEvent("auraRain")
+	assertTrue(EventService.isAuraRain(), "auraRain event not active after forceEvent")
+	assertTrue(Harness.lastEvent("EventStarted", p) ~= nil, "no EventStarted banner for auraRain")
+
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	Harness.advance(1.3) -- one aura tick under the rain
+	local rainy = auraStat(p).Value
+	assertTrue(rainy > 0, "no aura earned during Aura Rain")
+
+	-- Expire the rain (AURA_RAIN_SECONDS later) and confirm the boost is gone.
+	Harness.clearEvents()
+	Harness.advance(Config.AURA_RAIN_SECONDS + 1)
+	assertTrue(not EventService.isAuraRain(), "Aura Rain never expired")
+	local before = auraStat(p).Value
+	Harness.advance(1.3)
+	local plain = auraStat(p).Value - before
+	assertTrue(plain < rainy, ("rain multiplier still applied after expiry (%d vs %d)"):format(plain, rainy))
+end)
+
+test("events: Golden Chest pays the finder exactly once via touch", function()
+	local EventService = Harness.requireModule(serverFolder:FindFirstChild("EventService"))
+	local p = joinPlayer(522, "Finder522")
+	Harness.advance(0.3)
+
+	EventService.forceEvent("chest")
+	local chest = Harness.workspace:FindFirstChild("GoldenChest")
+	assertTrue(chest ~= nil, "GoldenChest part not spawned")
+
+	-- Touch it: reward lands, chest despawns, everyone is told.
+	local before = auraStat(p).Value
+	chest.Touched:Fire(p.Character.HumanoidRootPart)
+	local after = auraStat(p).Value
+	assertTrue(after > before, ("chest touch paid nothing (%d -> %d)"):format(before, after))
+	assertTrue(after - before >= Config.CHEST_REWARD_MIN and after - before <= Config.CHEST_REWARD_MAX, "chest reward out of Config range")
+	assertTrue(Harness.workspace:FindFirstChild("GoldenChest") == nil, "chest not destroyed after claim")
+	assertTrue(Harness.lastEvent("ChestOpened", p) ~= nil, "no ChestOpened broadcast")
+
+	-- Second touch can't happen (part gone), and the state is clean for the
+	-- scheduler: force another chest and confirm it spawns fresh.
+	EventService.forceEvent("chest")
+	assertTrue(Harness.workspace:FindFirstChild("GoldenChest") ~= nil, "second chest did not spawn")
+	local other = joinPlayer(523, "Taker523")
+	Harness.advance(0.3)
+	local c2 = Harness.workspace:FindFirstChild("GoldenChest")
+	c2.Touched:Fire(other.Character.HumanoidRootPart)
+	assertTrue(auraStat(other).Value >= Config.CHEST_REWARD_MIN, "second finder not paid")
 end)
 
 print(("\n%d passed, %d failed"):format(passed, failedCount))
