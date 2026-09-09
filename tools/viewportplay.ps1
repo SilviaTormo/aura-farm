@@ -1,20 +1,19 @@
-# viewportplay.ps1 - click the Studio 3D viewport (steals focus from docked
-# web panes, which silently eat keystrokes), then tap F5 = Play.
+# viewportplay.ps1 - focus Studio, click the 3D viewport, tap F5 = Play.
+# BUG FIXED 2026-09-09 15:10: mouse_event dx,dy are RELATIVE deltas — the
+# old version passed absolute coords and clicked random screen edges on
+# multi-monitor. SetCursorPos first, then click at the current position.
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
-public static class Vp {
-  [DllImport("user32.dll")] public static extern IntPtr FindWindow(string cls, string title);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+public static class Vp2 {
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, UIntPtr e);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, UIntPtr e);
-  public struct RECT { public int L, T, R, B; }
   public const uint LEFTDOWN = 0x2, LEFTUP = 0x4, KEYUP = 0x2;
-  public static void Click(int x, int y) {
-    mouse_event(LEFTDOWN, (uint)x, (uint)y, 0, UIntPtr.Zero);
-    System.Threading.Thread.Sleep(60);
-    mouse_event(LEFTUP, (uint)x, (uint)y, 0, UIntPtr.Zero);
+  public static void ClickHere() {
+    mouse_event(LEFTDOWN, 0, 0, 0, UIntPtr.Zero);
+    System.Threading.Thread.Sleep(70);
+    mouse_event(LEFTUP, 0, 0, 0, UIntPtr.Zero);
   }
   public static void Tap(byte vk) {
     keybd_event(vk, 0, 0, UIntPtr.Zero);
@@ -23,18 +22,15 @@ public static class Vp {
   }
 }
 '@
-$h = (Get-Process RobloxStudioBeta -ErrorAction SilentlyContinue |
-  Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1).MainWindowHandle
-if (-not $h) { Write-Output "no studio window"; exit 1 }
-$h = [IntPtr]$h
-$r = New-Object Vp+RECT
-[void][Vp]::GetWindowRect($h, [ref]$r)
-# Viewport = upper-left region of the window, clear of ribbon and docked panes.
-$vx = $r.L + 420
-$vy = $r.T + 420
-[void][Vp]::SetForegroundWindow($h)
-Start-Sleep -Milliseconds 500
-[Vp]::Click($vx, $vy)
+$wsh = New-Object -ComObject WScript.Shell
+$ok = $false
+for ($i = 0; $i -lt 8; $i++) { if ($wsh.AppActivate('AuraFarmPilot.rbxl - Roblox Studio')) { $ok = $true; break }; Start-Sleep -Milliseconds 500 }
+if (-not $ok) { Write-Output "could not focus Studio"; exit 1 }
+Start-Sleep -Milliseconds 800
+# Viewport center (window-independent screen coords; west dock is x<745).
+[void][Vp2]::SetCursorPos(1357, 719)
 Start-Sleep -Milliseconds 400
-[Vp]::Tap(0x74) # F5
-Write-Output "viewport click at $vx,$vy + F5 (window L=$($r.L) T=$($r.T))"
+[Vp2]::ClickHere()
+Start-Sleep -Milliseconds 400
+[Vp2]::Tap(0x74) # F5
+Write-Output "viewport click (SetCursorPos) at 1357,719 + F5"
