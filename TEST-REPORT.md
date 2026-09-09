@@ -118,3 +118,13 @@ OutdoorAmbient, ClockTime 15.5, shadows + mild bloom) and prints
 `[MapService] lighting applied`. Live session log confirms the line; frame analysis
 of evidence/light_check.png: ground luma 255→~148 with green tint present
 (avg RGB c6e9e4) and shadow structure visible. Suite 21/21; build 14:06.
+
+## 2026-09-09 — Training poses now render (user report: "en el train las poses no van")
+TrainingService recorded the picked pose for judging but never showed it: it never
+called AuraService.setActivePose (duels did). Fix: locking a training pose now calls
+setActivePose(poseId, {noPay=true}) — visual-only, so the pad can't be used as an
+idle-aura farm and round losers gain nothing; the economy entry of a pose farmed
+before the round is suspended while the training pose shows, and restored after
+(priorPoseId). Suite test upgraded to assert the real contract (was picking an
+UNLOCKED pose — the silent rejection that hid the bug): unlock -> pick -> attribute
+stamped -> cleared at round end. 21/21 green.

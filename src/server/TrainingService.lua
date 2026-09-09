@@ -11,6 +11,7 @@ local Shared = game.ReplicatedStorage.AuraFarmShared
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Remotes)
 
+local AuraService = require(script.Parent.AuraService)
 local CrowdService = require(script.Parent.CrowdService)
 local DataService = require(script.Parent.DataService)
 local JudgeService = require(script.Parent.JudgeService)
@@ -27,6 +28,9 @@ type Session = {
 	poseId: string?,
 	lockedAt: number?,
 	endsAt: number,
+	-- Pose the player had active before the training pose replaced it
+	-- (visual-only), restored when the round ends.
+	priorPoseId: string?,
 }
 
 local pad: BasePart? = nil
@@ -82,6 +86,20 @@ local function finishSession(current: Session)
 	local player = current.player
 	local remaining = current.lockedAt and math.max(0, current.endsAt - current.lockedAt) or nil
 
+	-- Drop the training pose from the avatar once the round is judged. If the
+	-- player was farming a pose with the wheel before the round, restore it;
+	-- otherwise clear (PoseStopped + attribute). Training never pays ambient
+	-- aura: the pose was visual-only via noPay. Only touch the pose when a
+	-- training pose was actually locked — an idle farmer who never picked
+	-- keeps their farm pose untouched.
+	if current.poseId then
+		if current.priorPoseId then
+			AuraService.setActivePose(player, current.priorPoseId)
+		else
+			AuraService.setActivePose(player, nil)
+		end
+	end
+
 	-- The bot: random pose, random timing (sometimes it hits the beat too).
 	local botPose = Config.POSES[math.random(#Config.POSES)]
 	local botRemaining = math.random() * 3
@@ -133,12 +151,14 @@ local function openSession(player: Player, viaTouch: boolean)
 		return
 	end
 	lastRun[player.UserId] = now
+	local priorPose = AuraService.getActivePose(player)
 
 	local current: Session = {
 		player = player,
 		poseId = nil,
 		lockedAt = nil,
 		endsAt = now + ROUND_SECONDS,
+		priorPoseId = priorPose and priorPose.poseId or nil,
 	}
 	session = current
 
@@ -169,6 +189,10 @@ local function onTrainingPick(player: Player, poseId: string)
 	end
 	current.poseId = poseId
 	current.lockedAt = os.clock()
+	-- Show the pose on the avatar like the pose wheel does — but visual-only
+	-- (noPay): training is judged practice, not a farming stance. Without this
+	-- flag the pad becomes an idle-aura farm and round losers still gain aura.
+	AuraService.setActivePose(player, poseId, { noPay = true })
 	print(("[TRAIN] %s locked pose '%s' at %.1fs left"):format(player.Name, poseId, current.endsAt - current.lockedAt))
 end
 

@@ -38,7 +38,10 @@ task.spawn(function()
 	end
 end)
 
-function AuraService.setActivePose(player: Player, poseId: string | nil)
+-- opts.noPay: render the pose but skip the economy entry (no ambient aura,
+-- no crowd hype) — used by training rounds, where the pose is a visual for
+-- the judge, not a farming stance.
+function AuraService.setActivePose(player: Player, poseId: string | nil, opts: { noPay: boolean }?)
 	if poseId == nil then
 		activePoses[player.UserId] = nil
 		-- Clear both replicated signals the renderers reconcile against:
@@ -70,14 +73,20 @@ function AuraService.setActivePose(player: Player, poseId: string | nil)
 	local profile = DataService.getProfile(player)
 	local dripMultiplier = profile and profile.hasDrip and Config.DRIP_AURA_MULTIPLIER or 1
 
-	activePoses[player.UserId] = {
-		poseId = poseId,
-		tier = pose.tier,
-		rate = pose.rate,
-		startedAt = os.clock(),
-		spotMultiplier = spotMultiplier,
-		dripMultiplier = dripMultiplier,
-	}
+	if opts and opts.noPay then
+		-- Economy follows the visible pose: a visual-only pose pays nothing
+		-- (and suspends any prior pose's accrual until it is restored).
+		activePoses[player.UserId] = nil
+	else
+		activePoses[player.UserId] = {
+			poseId = poseId,
+			tier = pose.tier,
+			rate = pose.rate,
+			startedAt = os.clock(),
+			spotMultiplier = spotMultiplier,
+			dripMultiplier = dripMultiplier,
+		}
+	end
 
 	if char then
 		-- The pose id replicates via attribute for every client's renderer;

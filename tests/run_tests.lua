@@ -337,13 +337,19 @@ test("training: pad session runs, result fires, aura only on win", function()
 
 	Remotes.TrainingStart.OnServerEvent:Fire(p)
 	assertTrue(Harness.lastEvent("TrainingRound", p) ~= nil, "TrainingRound never fired")
+	-- The picked pose must VISIBLY render (the training-poses-invisible fix):
+	-- locking through the real remote stamps the character attribute, which
+	-- every client's PoseRenderer reconciles against.
+	DataService.unlockPose(p, "wave")
 	Remotes.TrainingPick.OnServerEvent:Fire(p, "wave")
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "wave", "picked training pose does not render on the avatar")
 	-- Busy check while session open:
 	Remotes.TrainingStart.OnServerEvent:Fire(p)
 	local busy = Harness.lastEvent("ShopError", p)
 	assertTrue(busy ~= nil, "second session during open one was not rejected")
 
 	Harness.advance(8.2) -- round window closes
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "training pose not cleared after round end")
 	local result = Harness.lastEvent("TrainingResult", p)
 	assertTrue(result ~= nil, "TrainingResult never fired")
 	local won, auraWon = result.args[5], result.args[6]
