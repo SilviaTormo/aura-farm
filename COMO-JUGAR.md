@@ -21,11 +21,24 @@ el nuevo y abre la versión buena. Siempre.
    |-------|----------|
    | **P** | Posar: los NPCs te vitorean y ganas aura. Para DEJAR de posar: P otra vez y vuelve a tocar tu pose actual |
    | **T** | Entrenar (ronda de poses con jurado, también vale pisar el pad verde TRAIN) |
+   | **1-9** | Durante el entrenamiento: elegir la pose numerada (cada botón muestra su número) |
    | **B** | Tienda (comprar poses nuevas con aura) |
    | **M** | MOG / duelos (contra otros jugadores O contra NPCs; para jugar solo) |
    | **P** (otra vez) | Cerrar la rueda de poses |
 
 4. Para salir de la partida: **ESC → Stop** (o Mayús+F5).
+
+## Poses con efectos (las nuevas originales)
+
+En la tienda (B) hay 3 poses nuevas con efectos visuales al posar:
+
+   | Pose | Efecto |
+   |------|--------|
+   | 👻 **Phantom Fade** | Aura violeta flotando + luz espectral mientras sostienes la pose |
+   | 🕊️ **Ascension** | Explosión dorada al posar + luz intensa + aura flotando hacia arriba |
+   | 💀 **MOG Pose** | LA pose del remate: explosión naranja grande, luz potente y aura en llamas. La más costosa (ganancia 8x) |
+
+Pruébalas gratis desde la tienda: fila **"PILOTO: PRUÉBALO GRATIS"** → botón dorado.
 
 ## ¿Quieres probar el modo 2 jugadores (duelos)?
 

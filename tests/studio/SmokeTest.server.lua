@@ -91,9 +91,23 @@ if root then
 	scored("pose_applied", active ~= nil and active.poseId == "tpose",
 		active and ("poseId=%s tier=%d"):format(active.poseId, active.tier) or "not active")
 
-	-- Motor6D: the server PoseAnimator should have moved shoulder C0s.
-	local rs = char:FindFirstChild("RightShoulder", true) -- recursive: R15 nests motors inside limbs
-	scored("pose_motor6d", rs ~= nil, rs and "RightShoulder present (animator will pose it)" or "R6-style motor missing")
+	-- Pose rendering contract: the server stamps the replicated character
+	-- attribute; each client's PoseRenderer writes joint Transforms from it.
+	-- (Joints are AnimationConstraint since the 2026 Avatar Joint Upgrade —
+	-- Transform writes cannot replicate, so the server must NOT try.)
+	local allJoints = {}
+	for _, d in char:GetDescendants() do
+		if d:IsA("Motor6D") or d:IsA("AnimationConstraint") then
+			table.insert(allJoints, d.Name .. "(" .. d.ClassName .. ")")
+		end
+	end
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	scored("pose_render_contract", char:GetAttribute("AuraPoseId") == "tpose",
+		("attr=%s | joints [%d]: %s | humanoid=%s rigType=%s"):format(
+			tostring(char:GetAttribute("AuraPoseId")),
+			#allJoints, table.concat(allJoints, ", "),
+			humanoid and "yes" or "no",
+			humanoid and tostring(humanoid.RigType) or "-"))
 
 	-- AURA: crowd hype ticks the rate × multipliers.
 	local before = auraStat and auraStat.Value or 0

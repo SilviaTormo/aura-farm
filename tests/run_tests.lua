@@ -40,20 +40,28 @@ local function startService(name)
 end
 
 for _, name in {
-	"MapService", "DataService", "AuraService", "CrowdService", "PoseService",
-	"PoseAnimator", "JudgeService", "DuelService", "TrainingService",
+	"MapService", "DataService", "RebirthService", "EventService",
+	"AuraService", "CrowdService", "PoseService",
+	"JudgeService", "DuelService", "TrainingService",
 	"LeaderboardService", "MonetizationService", "CapturePromptService",
+	"DevShopService",
 } do
 	startService(name)
 end
+
+-- EventService's random scheduler must not fire mid-suite: tests advance the
+-- clock and its random events interleave with the ones tests force explicitly
+-- (a scheduler-spawned GoldenChest makes the chest test find the wrong part).
+Harness.requireModule(serverFolder:FindFirstChild("EventService")).stopScheduler()
 
 local MapService = Harness.requireModule(serverFolder:FindFirstChild("MapService"))
 local DataService = Harness.requireModule(serverFolder:FindFirstChild("DataService"))
 local AuraService = Harness.requireModule(serverFolder:FindFirstChild("AuraService"))
 local PoseService = Harness.requireModule(serverFolder:FindFirstChild("PoseService"))
-local PoseAnimator = Harness.requireModule(serverFolder:FindFirstChild("PoseAnimator"))
 local Remotes = Harness.requireModule(Harness.sharedFolder:FindFirstChild("Remotes"))
 local Config = Harness.requireModule(Harness.sharedFolder:FindFirstChild("Config"))
+local PoseTables = Harness.requireModule(Harness.sharedFolder:FindFirstChild("PoseTables"))
+local PoseRenderer = Harness.requireModule(Harness.poseRendererModule)
 
 -- ── Player helper: full join (player + character) ───────────────
 local function joinPlayer(userId, name)
@@ -65,8 +73,8 @@ local function joinPlayer(userId, name)
 	root.Name = "HumanoidRootPart"
 	root.Position = Vector3.new(0, 3.5, 18) -- spawn
 	root.Parent = char
+	char.Parent = Harness.workspace -- real characters live in workspace
 	player.Character = char -- property write: stored where reads find it
-	PoseAnimator.bindPlayer(char)
 	return player
 end
 
@@ -80,7 +88,7 @@ local function placeAt(player, position)
 end
 
 -- ════════════════════════════════════════════════════════════════
-test("boot: all 12 services init without error", function()
+test("boot: all 14 services init without error", function()
 	assertTrue(true) -- reaching here means boot was clean
 end)
 
@@ -116,45 +124,94 @@ test("pose: request applies pose, crowd pays aura, client told", function()
 	assertTrue(Harness.lastEvent("PoseStarted", p) ~= nil, "no PoseStarted broadcast")
 end)
 
-test("pose: Motor6D C0 actually rotates off its rest pivot (visibility regression)", function()
-	local p = joinPlayer(110, "Poser110")
-	Harness.advance(0.3)
-	-- Build a minimal R15-ish rig: nested motor like real R15 limbs.
-	local char = p.Character
-	local torso = Instance.new("Part")
-	torso.Name = "UpperTorso"
-	torso.Parent = char
-	local arm = Instance.new("Part")
-	arm.Name = "RightUpperArm"
-	arm.Parent = char
-	local motor = Instance.new("Motor6D")
-	motor.Name = "RightShoulder"
-	motor.Part0 = torso
-	motor.Part1 = arm
-	motor.Parent = arm -- R15 nests motors inside the limbs
+-- Builds a minimal rig on a character. jointClass: "AnimationConstraint"
+-- (2026 Avatar Joint Upgrade rigs) or "Motor6D" (legacy).
+local function addJoint(char, jointClass, name, parentName, childName)
+	local parentPart = Instance.new("Part")
+	parentPart.Name = parentName
+	parentPart.Parent = char
+	local childPart = Instance.new("Part")
+	childPart.Name = childName
+	childPart.Parent = char
+	local joint = Instance.new(jointClass)
+	joint.Name = name
+	joint.Parent = childPart -- R15 nests joints inside the limbs
+	return joint
+end
 
-	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
-	Harness.advance(0.3)
+-- Drives the renderer's real frame loop until alpha reaches 1 (7+ frames).
+local function runFrames(frames)
+	for _ = 1, frames or 10 do
+		Harness.services.RunService.PreSimulation:Fire()
+	end
+end
 
-	local c0 = (motor :: any).C0
-	-- A T-pose must rotate the arm out to the side: the rotation part of C0
-	-- must differ from identity (the old bug left it visually unchanged).
-	local rot = rawget(c0, "_rot")
-	assertTrue(rot ~= nil, "C0 has no rotation matrix")
-	local offDiagonal = math.abs(rot[1][2]) + math.abs(rot[1][3])
+local function rotationOffDiagonal(cf)
+	local rot = rawget(cf, "_rot")
+	assertTrue(rot ~= nil, "joint Transform has no rotation matrix")
+	return math.abs(rot[1][2]) + math.abs(rot[1][3])
 		+ math.abs(rot[2][1]) + math.abs(rot[2][3])
 		+ math.abs(rot[3][1]) + math.abs(rot[3][2])
-	assertTrue(offDiagonal > 0.5, "tpose C0 rotation ~identity — pose invisible")
+end
 
-	-- Re-posing must NOT double-apply: stop, pose again, compare against the
-	-- first application (old code multiplied onto the current C0).
-	Remotes.StopPose.OnServerEvent:Fire(p)
+test("pose: AnimationConstraint rig actually rotates (visibility regression, 2026 rigs)", function()
+	local p = joinPlayer(110, "Poser110")
 	Harness.advance(0.3)
+	local joint = addJoint(p.Character, "AnimationConstraint", "RightShoulder", "UpperTorso", "RightUpperArm")
+
 	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	runFrames(10)
+
+	-- The PoseStarted broadcast must have driven the renderer: the joint's
+	-- Transform must rotate off identity (the old server-C0 poser wrote C0
+	-- on AnimationConstraint rigs — read-only — so nothing ever moved).
+	assertTrue(rotationOffDiagonal(joint.Transform) > 0.5, "tpose Transform ~identity — pose invisible on AnimationConstraint rigs")
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "tpose", "server did not stamp the character attribute")
+
+	-- Stop must reset the joint, not leave it frozen mid-air.
+	Remotes.StopPose.OnServerEvent:Fire(p)
+	runFrames(2)
+	local rot = rawget(joint.Transform, "_rot")
+	assertTrue(rot == nil or rotationOffDiagonal(joint.Transform) < 1e-6, "stopPose left the joint rotated")
+end)
+
+test("pose: legacy Motor6D rig still renders (back-compat)", function()
+	local p = joinPlayer(113, "Legacy113")
 	Harness.advance(0.3)
-	local c0b = (motor :: any).C0
-	local rb = rawget(c0b, "_rot")
-	assertTrue(math.abs(rb[3][1] - rot[3][1]) < 1e-6, "re-pose drifted (double-applied)")
+	local joint = addJoint(p.Character, "Motor6D", "RightShoulder", "UpperTorso", "RightUpperArm")
+
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	runFrames(10)
+	assertTrue(rotationOffDiagonal(joint.Transform) > 0.5, "Motor6D rig not rendered")
+end)
+
+test("pose: joints appearing late are found by the frame retry (spawn race)", function()
+	local p = joinPlayer(114, "LateJoints114")
+	Harness.advance(0.3)
+	local char = p.Character
+
+	-- Pose arrives the same instant the character spawns: no joints yet.
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	runFrames(5)
+
+	-- Joints spawn a moment later (real avatars build over several frames).
+	local joint = addJoint(char, "AnimationConstraint", "RightShoulder", "UpperTorso", "RightUpperArm")
+	runFrames(70) -- beyond the 60-frame retry window
+	assertTrue(rotationOffDiagonal(joint.Transform) > 0.5, "late joints never picked up — pose stuck invisible")
+end)
+
+test("pose: zero-joint rig warns once and gives up (no infinite search)", function()
+	local p = joinPlayer(115, "NoJoints115")
+	Harness.advance(0.3)
+
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	runFrames(80) -- past the retry window: the warning should have fired
+
+	-- Reconciler keeps re-setting the same pose; the gaveUp record must not
+	-- restart a 60-frame search every 2s tick. Drive more frames, state stays.
+	Harness.advance(2.5)
+	runFrames(5)
+	assertTrue(AuraService.getActivePose(p) ~= nil, "server dropped the pose (should persist)")
 end)
 
 test("pose: locked pose is rejected", function()
@@ -287,13 +344,19 @@ test("training: pad session runs, result fires, aura only on win", function()
 
 	Remotes.TrainingStart.OnServerEvent:Fire(p)
 	assertTrue(Harness.lastEvent("TrainingRound", p) ~= nil, "TrainingRound never fired")
+	-- The picked pose must VISIBLY render (the training-poses-invisible fix):
+	-- locking through the real remote stamps the character attribute, which
+	-- every client's PoseRenderer reconciles against.
+	DataService.unlockPose(p, "wave")
 	Remotes.TrainingPick.OnServerEvent:Fire(p, "wave")
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "wave", "picked training pose does not render on the avatar")
 	-- Busy check while session open:
 	Remotes.TrainingStart.OnServerEvent:Fire(p)
 	local busy = Harness.lastEvent("ShopError", p)
 	assertTrue(busy ~= nil, "second session during open one was not rejected")
 
 	Harness.advance(8.2) -- round window closes
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "training pose not cleared after round end")
 	local result = Harness.lastEvent("TrainingResult", p)
 	assertTrue(result ~= nil, "TrainingResult never fired")
 	local won, auraWon = result.args[5], result.args[6]
@@ -303,6 +366,193 @@ test("training: pad session runs, result fires, aura only on win", function()
 	else
 		assertEq(auraStat(p).Value, auraBefore, "lost but aura changed anyway")
 	end
+end)
+
+test("training: digit keys pick the Nth shown pose (keyboard picker)", function()
+	local p = joinPlayer(402, "Keyer402")
+	Harness.advance(0.3)
+	-- TrainingUi binds to Players.LocalPlayer and PlayerGui at require time.
+	local playerGui = Instance.new("Folder")
+	playerGui.Name = "PlayerGui"
+	playerGui.Parent = p
+	Harness.Players.LocalPlayer = p
+	local TrainingUi = Harness.requireModule(Harness.trainingUiModule)
+	local _ = TrainingUi
+	-- Own exactly two poses; picker order follows Config.POSES order.
+	DataService.unlockPose(p, "tpose")
+	DataService.unlockPose(p, "moai")
+	-- Server pushes the unlock list the way join does; the picker builds from it.
+	Remotes.SyncUnlocked:FireClient(p, { "tpose", "moai" })
+	-- Open a round so the picker is populated.
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Harness.advance(0.1)
+	-- Press digit 2: fires TrainingPick (the exact button packet) -> moai renders.
+	Harness.fireContextAction("TrainingPickDigit", Harness.Enum.UserInputState.Begin, {
+		KeyCode = Harness.Enum.KeyCode.Two,
+	})
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "moai", "digit 2 did not pick the 2nd picker pose")
+	-- Switch mid-round: pressing 1 re-locks the 1st pose (re-picks are the
+	-- point of the picker; the judge scores the last pose held).
+	Harness.fireContextAction("TrainingPickDigit", Harness.Enum.UserInputState.Begin, {
+		KeyCode = Harness.Enum.KeyCode.One,
+	})
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "tpose", "re-pick did not switch the pose mid-round")
+	-- Digit 9 with only 2 poses shown: pass-through, pose unchanged. A fresh
+	-- round for a clean state.
+	Harness.advance(8.2) -- closes the round + 12s busy guard via more advance below
+	Harness.advance(12.1) -- clears the CAS busy debounce and the pad cooldown
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Harness.advance(0.1)
+	Harness.fireContextAction("TrainingPickDigit", Harness.Enum.UserInputState.Begin, {
+		KeyCode = Harness.Enum.KeyCode.Nine,
+	})
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "digit 9 picked a pose with only 2 shown (should pass through)")
+end)
+
+test("training: farming pose restored after round (attribute + economy resume)", function()
+	local p = joinPlayer(403, "Farmer403")
+	Harness.advance(0.3)
+	DataService.unlockPose(p, "wave")
+	DataService.unlockPose(p, "moai")
+	placeAt(p, Vector3.new(0, 3.5, 0)) -- fountain plaza: crowd pays ambient aura
+
+	-- The pad is a single global slot: flush any unpicked round a previous
+	-- test left pending so TrainingStart below isn't bounced with "busy".
+	Harness.advance(8.2)
+
+	-- Farming with the wheel first: a real paid pose. Payment is asserted
+	-- through grantTick — the exact function the live loop calls each second
+	-- with the crowd count — because NPC walk timing makes real crowds flaky
+	-- in suite order.
+	Remotes.RequestPose.OnServerEvent:Fire(p, "wave")
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "wave", "farm pose not active before training")
+	assertTrue(AuraService.getActivePose(p) ~= nil, "farm pose has no economy entry")
+	AuraService.grantTick(p, 5)
+	local auraBefore = auraStat(p).Value
+	assertTrue(auraBefore > 0, "farming pose paid nothing (setup broken)")
+
+	-- Enter training and lock a different pose: farm entry must suspend.
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Remotes.TrainingPick.OnServerEvent:Fire(p, "moai")
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "moai", "training pose did not replace the farm pose visually")
+	assertTrue(AuraService.getActivePose(p) == nil, "training pick did not suspend the farm economy entry")
+	AuraService.grantTick(p, 5)
+	assertTrue(auraStat(p).Value == auraBefore, "suspended farm pose still paid aura during training")
+
+	-- Round end: prior pose restored visibly AND its economy entry live again.
+	Harness.advance(8.3)
+	assertEq(p.Character:GetAttribute("AuraPoseId"), "wave", "farm pose not restored after training round")
+	local resumed = AuraService.getActivePose(p)
+	assertTrue(resumed ~= nil, "restored farm pose has no economy entry")
+	assertEq(resumed and resumed.poseId, "wave", "wrong pose restored in the economy entry")
+	AuraService.grantTick(p, 5)
+	assertTrue(auraStat(p).Value > auraBefore, "restored farm pose did not resume paying aura")
+end)
+
+test("training: pose-less round end restores nothing (guard no-op)", function()
+	local p = joinPlayer(404, "Idle404")
+	Harness.advance(0.3)
+	DataService.unlockPose(p, "tpose")
+
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Harness.advance(0.1)
+	-- Never pick: the round must end with no pose and no economy entry.
+	Harness.advance(8.2)
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "pose-less round end stamped a pose attribute")
+	assertTrue(AuraService.getActivePose(p) == nil, "pose-less round end created an economy entry")
+
+	-- Same guard after the player later stops a wheel pose (record path ran).
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	Remotes.StopPose.OnServerEvent:Fire(p)
+	Harness.advance(0.1)
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "stopPose left the attribute stamped")
+	Remotes.TrainingStart.OnServerEvent:Fire(p)
+	Harness.advance(8.3)
+	assertEq(p.Character:GetAttribute("AuraPoseId"), nil, "round end restored a stopped pose")
+	assertTrue(AuraService.getActivePose(p) == nil, "round end resurrected a stopped economy entry")
+end)
+
+-- ════════════════════════════════════════════════════════════════
+-- Monetization: the full Robux pipeline (gamepasses + dev products)
+-- driven through the mock MarketplaceService. Config ships with id = 0
+-- ("coming soon"), so real IDs are temporarily injected per test.
+-- ════════════════════════════════════════════════════════════════
+local marketplace = Harness.services.MarketplaceService
+local gamepasses = Config.GAMEPASSES
+test("monetization: pass buy prompts Roblox purchase, grant applies perk", function()
+	local p = joinPlayer(501, "Buyer501")
+	Harness.advance(0.3)
+
+	gamepasses.DoubleAura = 111222
+	marketplace.lastGamePassPrompt = nil
+	marketplace.lastGamePassPlayer = nil
+	Harness.clearEvents()
+	Remotes.BuyPass.OnServerEvent:Fire(p, "DoubleAura")
+	assertEq(marketplace.lastGamePassPrompt, 111222, "pass button did not prompt the Roblox purchase")
+	assertEq(marketplace.lastGamePassPlayer, p, "purchase prompt went to the wrong player")
+
+	-- Roblox confirms the purchase later; first measure the PLAIN rate.
+	placeAt(p, Vector3.new(0, 3.5, 0))
+	DataService.unlockPose(p, "wave")
+	Remotes.RequestPose.OnServerEvent:Fire(p, "wave")
+	AuraService.grantTick(p, 5)
+	local before = auraStat(p).Value
+	AuraService.grantTick(p, 5)
+	local plainDelta = auraStat(p).Value - before
+	assertTrue(plainDelta > 0, "setup: farming pays nothing, 2x comparison meaningless")
+
+	-- The perk must actually pay: grantTick honors the 2x attribute.
+	before = auraStat(p).Value
+	marketplace.PromptGamePassPurchaseFinished:Fire(p, 111222, true)
+	assertTrue(auraStat(p):GetAttribute("DoubleAura") == true, "confirmed purchase did not apply the 2x aura perk")
+	AuraService.grantTick(p, 5)
+	assertTrue(auraStat(p).Value - before > plainDelta, "2x pass did not increase aura payment")
+end)
+
+test("monetization: dev product receipt grants perk, replay is deduped", function()
+	local p = joinPlayer(502, "Buyer502")
+	Harness.advance(0.3)
+
+	Config.DEV_PRODUCTS.MogShield = 333444
+	Harness.clearEvents()
+	Remotes.BuyProduct.OnServerEvent:Fire(p, "MogShield")
+	assertEq(marketplace.lastProductPrompt, 333444, "product button did not prompt the Roblox purchase")
+
+	-- Roblox delivers the receipt (exactly what ProcessReceipt receives).
+	local receipt = {
+		PlayerId = p.UserId,
+		ProductId = 333444,
+		PurchaseId = 987654,
+	}
+	local decision = marketplace.ProcessReceipt(receipt)
+	assertEq(decision, Harness.Enum.ProductPurchaseDecision.PurchaseGranted, "valid receipt not granted")
+	local until_ = auraStat(p):GetAttribute("MogShieldUntil")
+	assertTrue(until_ ~= nil and until_ > Harness.os.time(), "granted receipt did not arm the Mog Shield")
+
+	-- Roblox redelivers the same receipt (its documented at-least-once
+	-- behavior): must re-grant decision WITHOUT re-arming a longer shield.
+	auraStat(p):SetAttribute("MogShieldUntil", 1) -- canary: would be overwritten by a re-grant
+	decision = marketplace.ProcessReceipt(receipt)
+	assertEq(decision, Harness.Enum.ProductPurchaseDecision.PurchaseGranted, "replayed receipt not granted")
+	assertEq(auraStat(p):GetAttribute("MogShieldUntil"), 1, "replayed receipt re-granted the perk (dedupe broken)")
+end)
+
+test("monetization: id=0 stays a coming-soon stub", function()
+	local p = joinPlayer(503, "Browser503")
+	Harness.advance(0.3)
+	marketplace.lastGamePassPrompt = nil -- earlier tests prompted real IDs
+	marketplace.lastProductPrompt = nil
+
+	Harness.clearEvents()
+	Remotes.BuyPass.OnServerEvent:Fire(p, "SigmaPosePack")
+	assertEq(marketplace.lastGamePassPrompt, nil, "id=0 pass opened a Roblox prompt")
+	local err = Harness.lastEvent("ShopError", p)
+	assertTrue(err ~= nil, "id=0 pass gave no feedback")
+
+	Harness.clearEvents()
+	Remotes.BuyProduct.OnServerEvent:Fire(p, "PartyMode")
+	assertEq(marketplace.lastProductPrompt, nil, "id=0 product opened a Roblox prompt")
+	assertTrue(Harness.lastEvent("ShopError", p) ~= nil, "id=0 product gave no feedback")
 end)
 
 test("data: save/load round-trip preserves aura + unlocks", function()
@@ -328,12 +578,55 @@ test("data: SECOND save of a returning player actually persists (lock-baseline f
 	local store = Harness.services.DataStoreService.stores["AuraFarm_v1"]
 	assertTrue(store ~= nil, "store missing")
 	local saved = store.data["player_301"]
-	assertTrue(saved ~= nil, "second save vanished (session-lock aborted it)")
-	assertEq(saved.aura, 778, "second save did not persist the new aura")
+	assertTrue(saved ~= nil, "second save vanished (session-lock aborted it)")		assertEq(saved.aura, 778, "second save did not persist the new aura")
+end)
+
+test("devshop: gate OPEN grants through the real remote", function()
+	-- Suite harness runs IsStudio()=false, so the server gate is shut by
+	-- default — exactly what a published server must see. Flip the flag AND
+	-- make IsStudio true (what Studio Play looks like) for this test.
+	local RunService = Harness.services.RunService
+	local wasStudio = RunService.IsStudio
+	RunService.IsStudio = function() return true end
+	Config.DEV_SHOP_ENABLED = true
+	local p = joinPlayer(505, "Pilot505")
+	Harness.advance(0.3)
+
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "SigmaPosePack")
+	DataService.unlockPose(p, "sigma") -- grant calls unlockPose; make it valid
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "SigmaPosePack")
+	assertTrue(p.Character:GetAttribute("AuraPoseId") == nil, "dev grant should not pose the avatar")
+	local unlocked = Harness.lastEvent("PoseUnlocked", p)
+	assertTrue(unlocked ~= nil and unlocked.args[1] == "sigma", "gate OPEN: SIGMA grant did not arrive")
+
+	RunService.IsStudio = wasStudio
+	Config.DEV_SHOP_ENABLED = false
+end)
+
+test("devshop: gate CLOSED refuses grants (published-server safety)", function()
+	-- Restore the real published-server conditions: flag off, IsStudio false.
+	Config.DEV_SHOP_ENABLED = false
+	local RunService = Harness.services.RunService
+	local wasStudio = RunService.IsStudio
+	RunService.IsStudio = function() return false end
+	local p = joinPlayer(506, "Hacker506")
+	Harness.advance(0.3)
+	local unlockedBefore = #Harness.eventsFor("PoseUnlocked", p)
+
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "SigmaPosePack")
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "PartyMode")
+	Remotes.DevShopTry.OnServerEvent:Fire(p, "DoubleAura")
+	assertEq(#Harness.eventsFor("PoseUnlocked", p), unlockedBefore, "gate CLOSED: SIGMA was granted anyway!")
+	local stat = auraStat(p)
+	assertTrue(stat:GetAttribute("DoubleAura") ~= true, "gate CLOSED: 2x Aura was granted anyway!")
+
+	RunService.IsStudio = wasStudio
 end)
 
 test("npc duel: solo best-of-5 vs rival with bounty + rival released", function()
-	local solo = joinPlayer(501, "Solo501")
+	-- Fresh userId: 501 is held by the monetization test's player, and the
+	-- exact bounty assertion below needs a profile with no carried-over aura.
+	local solo = joinPlayer(510, "Solo510")
 	Harness.advance(0.5)
 	DataService.addAura(solo, 3000) -- enough to buy kat
 	Remotes.BuyPose.OnServerEvent:Fire(solo, "kata")
@@ -410,6 +703,130 @@ test("crowd: NPCs exist and stop hyping when nobody poses", function()
 	Harness.clearEvents()
 	Harness.advance(2.2)
 	assertTrue(Harness.lastEvent("AuraChanged") == nil, "aura paid while nobody was posing")
+end)
+
+test("pose catalog contract: every Config pose has angles, FX poses have effects", function()
+	for _, pose in Config.POSES do
+		local table = PoseTables.get(pose.id)
+		assertTrue(table ~= nil and #table > 0, "pose '" .. pose.id .. "' has no angle table (invisible in game!)")
+		local fx = PoseTables.getFx(pose.id)
+		if fx then
+			assertTrue(fx.auraColor ~= nil, "FX for '" .. pose.id .. "' missing auraColor")
+			if fx.burstCount then
+				assertTrue(fx.burstSpeed ~= nil, "FX for '" .. pose.id .. "' has burstCount but no burstSpeed")
+			end
+			assertTrue(fx.lightBrightness == nil or fx.lightBrightness > 0, "FX for '" .. pose.id .. "' has non-positive lightBrightness")
+		end
+	end
+	-- And the reverse: every angle table maps to a real Config pose (no orphans).
+	for poseId, _ in PoseTables.TABLES do
+		local found = false
+		for _, pose in Config.POSES do
+			if pose.id == poseId then
+				found = true
+				break
+			end
+		end
+		assertTrue(found, "PoseTables has angles for '" .. poseId .. "' but Config.POSES does not list it")
+	end
+end)
+
+test("pose: R6 rig gets posed (space-named motors, derived angles)", function()
+	local p = joinPlayer(112, "SixR112")
+	Harness.advance(0.3)
+	local joint = addJoint(p.Character, "Motor6D", "Right Shoulder", "Torso", "Right Arm")
+
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	runFrames(10)
+	assertTrue(rotationOffDiagonal(joint.Transform) > 0.5, "R6 rig not posed — renderer ignored space-named motors")
+
+	-- The derived R6 transform must differ from the R15 angles (R6 shoulder
+	-- pivots carry a 90-degree yaw; verbatim R15 angles would swing the arm
+	-- forward/back instead of out to the side).
+	local rot = rawget(joint.Transform, "_rot")
+	local expectedRz = math.abs(math.sin(math.rad(85))) -- |sin| of transformed z
+	assertTrue(math.abs(math.abs(rot[3][2]) - expectedRz) < 0.01 or math.abs(math.abs(rot[2][1]) - expectedRz) < 0.01,
+		"R6 angles not derived from R15 (verbatim application?)")
+end)
+
+test("rebirth: grants permanent multiplier and resets aura (poses kept)", function()
+	local RebirthService = Harness.requireModule(serverFolder:FindFirstChild("RebirthService"))
+	local p = joinPlayer(520, "Farmer520")
+	Harness.advance(0.3)
+
+	-- Can't rebirth with nothing in the bank...
+	Remotes.RebirthRequest.OnServerEvent:Fire(p)
+	assertTrue(DataService.getRebirths(p) == 0, "rebirth succeeded for free!")
+
+	-- ...and the gate uses SPENDABLE aura, so a big spendable means a real reset.
+	DataService.addAura(p, Config.REBIRTH_BASE_COST) -- exactly rebirth #1's cost
+	Remotes.RebirthRequest.OnServerEvent:Fire(p)
+	assertTrue(DataService.getRebirths(p) == 1, "rebirth #1 did not register")
+	assertTrue(DataService.getSpendableAura(p) == 0, "aura not reset by rebirth")
+	local stat = p:FindFirstChild("leaderstats") and p:FindFirstChild("leaderstats"):FindFirstChild("Rebirths")
+	assertTrue(stat ~= nil and stat.Value == 1, "leaderstats.Rebirths stale after rebirth")
+
+	-- The permanent payoff: the multiplier source everyone reads (grantTick,
+	-- HUD, confirm prompt) pays +25% over the no-rebirth baseline.
+	assertTrue(RebirthService.getMultiplier(p) == 1.25, "multiplier not 1.25 after rebirth #1")
+
+	-- Poses survive the reset: tpose was already unlocked, still is.
+	local profile = DataService.getProfile(p)
+	assertTrue(table.find(profile.unlocked, "tpose") ~= nil, "rebirth wiped pose unlocks")
+end)
+
+test("events: forced Aura Rain doubles the aura tick until it expires", function()
+	local EventService = Harness.requireModule(serverFolder:FindFirstChild("EventService"))
+	local p = joinPlayer(521, "Rainy521")
+	Harness.advance(1) -- let NPCs settle
+	placeAt(p, Vector3.new(0, 3.5, 0))
+
+	EventService.forceEvent("auraRain")
+	assertTrue(EventService.isAuraRain(), "auraRain event not active after forceEvent")
+	assertTrue(Harness.lastEvent("EventStarted", p) ~= nil, "no EventStarted banner for auraRain")
+
+	Remotes.RequestPose.OnServerEvent:Fire(p, "tpose")
+	Harness.advance(1.3) -- one aura tick under the rain
+	local rainy = auraStat(p).Value
+	assertTrue(rainy > 0, "no aura earned during Aura Rain")
+
+	-- Expire the rain (AURA_RAIN_SECONDS later) and confirm the boost is gone.
+	Harness.clearEvents()
+	Harness.advance(Config.AURA_RAIN_SECONDS + 1)
+	assertTrue(not EventService.isAuraRain(), "Aura Rain never expired")
+	local before = auraStat(p).Value
+	Harness.advance(1.3)
+	local plain = auraStat(p).Value - before
+	assertTrue(plain < rainy, ("rain multiplier still applied after expiry (%d vs %d)"):format(plain, rainy))
+end)
+
+test("events: Golden Chest pays the finder exactly once via touch", function()
+	local EventService = Harness.requireModule(serverFolder:FindFirstChild("EventService"))
+	local p = joinPlayer(522, "Finder522")
+	Harness.advance(0.3)
+
+	EventService.forceEvent("chest")
+	local chest = Harness.workspace:FindFirstChild("GoldenChest")
+	assertTrue(chest ~= nil, "GoldenChest part not spawned")
+
+	-- Touch it: reward lands, chest despawns, everyone is told.
+	local before = auraStat(p).Value
+	chest.Touched:Fire(p.Character.HumanoidRootPart)
+	local after = auraStat(p).Value
+	assertTrue(after > before, ("chest touch paid nothing (%d -> %d)"):format(before, after))
+	assertTrue(after - before >= Config.CHEST_REWARD_MIN and after - before <= Config.CHEST_REWARD_MAX, "chest reward out of Config range")
+	assertTrue(Harness.workspace:FindFirstChild("GoldenChest") == nil, "chest not destroyed after claim")
+	assertTrue(Harness.lastEvent("ChestOpened", p) ~= nil, "no ChestOpened broadcast")
+
+	-- Second touch can't happen (part gone), and the state is clean for the
+	-- scheduler: force another chest and confirm it spawns fresh.
+	EventService.forceEvent("chest")
+	assertTrue(Harness.workspace:FindFirstChild("GoldenChest") ~= nil, "second chest did not spawn")
+	local other = joinPlayer(523, "Taker523")
+	Harness.advance(0.3)
+	local c2 = Harness.workspace:FindFirstChild("GoldenChest")
+	c2.Touched:Fire(other.Character.HumanoidRootPart)
+	assertTrue(auraStat(other).Value >= Config.CHEST_REWARD_MIN, "second finder not paid")
 end)
 
 print(("\n%d passed, %d failed"):format(passed, failedCount))

@@ -12,7 +12,8 @@ local Remotes = require(Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
 local MapService = require(script.Parent.MapService)
-local PoseAnimator = require(script.Parent.PoseAnimator)
+local RebirthService = require(script.Parent.RebirthService)
+local EventService = require(script.Parent.EventService)
 
 local AuraService = {}
 
@@ -39,12 +40,17 @@ task.spawn(function()
 	end
 end)
 
-function AuraService.setActivePose(player: Player, poseId: string | nil)
+-- opts.noPay: render the pose but skip the economy entry (no ambient aura,
+-- no crowd hype) — used by training rounds, where the pose is a visual for
+-- the judge, not a farming stance.
+function AuraService.setActivePose(player: Player, poseId: string | nil, opts: { noPay: boolean }?)
 	if poseId == nil then
 		activePoses[player.UserId] = nil
+		-- Clear both replicated signals the renderers reconcile against:
+		-- the explicit broadcast and the attribute.
 		local char = player.Character
 		if char then
-			PoseAnimator.stopPose(char)
+			char:SetAttribute("AuraPoseId", nil)
 		end
 		Remotes.PoseStopped:FireAllClients(player)
 		return
@@ -69,17 +75,26 @@ function AuraService.setActivePose(player: Player, poseId: string | nil)
 	local profile = DataService.getProfile(player)
 	local dripMultiplier = profile and profile.hasDrip and Config.DRIP_AURA_MULTIPLIER or 1
 
-	activePoses[player.UserId] = {
-		poseId = poseId,
-		tier = pose.tier,
-		rate = pose.rate,
-		startedAt = os.clock(),
-		spotMultiplier = spotMultiplier,
-		dripMultiplier = dripMultiplier,
-	}
+	if opts and opts.noPay then
+		-- Economy follows the visible pose: a visual-only pose pays nothing
+		-- (and suspends any prior pose's accrual until it is restored).
+		activePoses[player.UserId] = nil
+	else
+		activePoses[player.UserId] = {
+			poseId = poseId,
+			tier = pose.tier,
+			rate = pose.rate,
+			startedAt = os.clock(),
+			spotMultiplier = spotMultiplier,
+			dripMultiplier = dripMultiplier,
+		}
+	end
 
 	if char then
-		PoseAnimator.applyPose(char, poseId)
+		-- The pose id replicates via attribute for every client's renderer;
+		-- joint Transforms are written client-side (AnimationConstraint's
+		-- Transform does not replicate, C0 is read-only).
+		char:SetAttribute("AuraPoseId", poseId)
 	end
 	Remotes.PoseStarted:FireAllClients(player, poseId)
 end
@@ -115,6 +130,12 @@ function AuraService.grantTick(player: Player, crowdCount: number)
 	if auraStat and auraStat:GetAttribute("DoubleAura") == true then
 		multiplier *= Config.PASS_AURA_MULTIPLIER
 	end
+	-- Rebirth prestige: permanent +25% per rebirth (RebirthService).
+	multiplier *= RebirthService.getMultiplier(player)
+	-- Live events: Aura Rain doubles everything while active (EventService).
+	if EventService.isAuraRain() then
+		multiplier *= 2
+	end
 	if AuraService.isPartyMode() then
 		multiplier *= 2
 	end
@@ -132,12 +153,13 @@ end
 
 local function onPlayerAdded(player: Player)
 	player.CharacterAdded:Connect(function(char)
-		PoseAnimator.bindPlayer(char)
-		-- A respawned character is no longer holding a pose.
+		-- A respawned character is no longer holding a pose: clear the
+		-- replicated attribute the renderers reconcile against.
+		char:SetAttribute("AuraPoseId", nil)
 		activePoses[player.UserId] = nil
 	end)
 	if player.Character then
-		PoseAnimator.bindPlayer(player.Character)
+		player.Character:SetAttribute("AuraPoseId", nil)
 	end
 
 	local leaderstats = Instance.new("Folder")

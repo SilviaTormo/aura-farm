@@ -25,6 +25,7 @@ export type Profile = {
 	wins: number,
 	losses: number,
 	hasDrip: boolean,
+	rebirths: number,
 }
 
 local profiles: { [number]: Profile } = {}
@@ -48,6 +49,7 @@ local function defaultProfile(): Profile
 		wins = 0,
 		losses = 0,
 		hasDrip = false,
+		rebirths = 0,
 	}
 end
 
@@ -73,6 +75,48 @@ function DataService.spendAura(player: Player, amount: number): boolean
 	profile.aura -= amount
 	syncStats(player, profile.aura)
 	return true
+end
+
+-- Rebirth support: read the current aura, then zero it in one call.
+function DataService.getSpendableAura(player: Player): number
+	local profile = profiles[player.UserId]
+	return profile and profile.aura or 0
+end
+
+function DataService.spendAllAura(player: Player): number
+	local profile = profiles[player.UserId]
+	if not profile then
+		return 0
+	end
+	local spent = profile.aura
+	profile.aura = 0
+	syncStats(player, 0)
+	return spent
+end
+
+function DataService.getRebirths(player: Player): number
+	local profile = profiles[player.UserId]
+	return profile and profile.rebirths or 0
+end
+
+function DataService.setRebirths(player: Player, count: number)
+	local profile = profiles[player.UserId]
+	if profile then
+		profile.rebirths = math.max(0, math.floor(count))
+		-- Create-or-update the public leaderstats row: it's created in a
+		-- PlayerAdded handler elsewhere, so an early rebirth (or test timing)
+		-- can beat its creation — and afterwards this is the only writer.
+		local leaderstats = player:FindFirstChild("leaderstats")
+		if leaderstats then
+			local stat = leaderstats:FindFirstChild("Rebirths")
+			if not stat then
+				stat = Instance.new("IntValue")
+				stat.Name = "Rebirths"
+				stat.Parent = leaderstats
+			end
+			stat.Value = profile.rebirths
+		end
+	end
 end
 
 function DataService.unlockPose(player: Player, poseId: string)
@@ -125,6 +169,7 @@ local function load(player: Player): Profile
 			end
 		end
 		profile.hasDrip = loaded.hasDrip == true
+		profile.rebirths = tonumber(loaded.rebirths) or 0
 		-- Seed the session-lock baseline from the loaded record: without this,
 		-- the first save of every returning player would see old.lock > 0 and
 		-- silently abort (total session loss).
@@ -156,6 +201,7 @@ local function save(player: Player)
 				wins = profile.wins,
 				losses = profile.losses,
 				hasDrip = profile.hasDrip,
+				rebirths = profile.rebirths,
 				lock = now,
 			}
 		end, 30)

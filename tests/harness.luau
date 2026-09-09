@@ -194,6 +194,9 @@ end
 -- ── Instances ───────────────────────────────────────────────────
 local InstanceMethods = {}
 function InstanceMethods:IsA(className)
+	if className == "Instance" then
+		return true
+	end
 	return self._className == className
 end
 function InstanceMethods:FindFirstChild(name, recursive)
@@ -233,6 +236,16 @@ function InstanceMethods:Destroy()
 end
 function InstanceMethods:GetChildren()
 	return table.clone(self._children)
+end
+function InstanceMethods:IsDescendantOf(ancestor)
+	local cur = rawget(self, "_Parent")
+	while cur do
+		if cur == ancestor then
+			return true
+		end
+		cur = rawget(cur, "_Parent")
+	end
+	return false
 end
 
 local Instancemt = {}
@@ -295,15 +308,34 @@ Instance = {
 			Touched = Signal.new(),
 			CharacterAdded = Signal.new(),
 		}
+		if className == "TextButton" or className == "ImageButton" then
+			-- GUI buttons carry click signals (TrainingUi picker binds them).
+			inst.MouseButton1Click = Signal.new()
+			inst.Activated = Signal.new()
+		end
 		if className == "RemoteEvent" then
 			inst.OnServerEvent = Signal.new()
+			inst.OnClientEvent = Signal.new()
 			function inst:FireClient(player, ...)
 				logEvent(self._Name, player, ...)
+				-- Single-machine model: connected client handlers run too, so
+				-- client modules (PoseRenderer) are testable end-to-end.
+				-- Real Roblox passes ONLY the payload on the receiving side —
+				-- the sender's player is not prepended.
+				inst.OnClientEvent:Fire(...)
 			end
 			function inst:FireAllClients(...)
 				for _, player in Players.byUserId do
 					logEvent(self._Name, player, ...)
+					inst.OnClientEvent:Fire(...)
 				end
+			end
+			function inst:FireServer(...)
+				-- Client->server: real Roblox prepends the LocalPlayer on the
+				-- receiving side (OnServerEvent handlers always get player first).
+				local lp = Players.LocalPlayer
+				logEvent(self._Name, lp, ...)
+				inst.OnServerEvent:Fire(lp, ...)
 			end
 		end
 		return setmetatable(inst, Instancemt)
@@ -366,6 +398,9 @@ DataStoreService = {
 -- the methods below all share one variable)
 Players = {
 	byUserId = {},
+	-- The client view (TrainingUi binds to it at require time); tests point
+	-- it at the player under test before requiring a client UI module.
+	LocalPlayer = nil :: any,
 	PlayerAdded = Signal.new(),
 	PlayerRemoving = Signal.new(),
 	GetPlayers = function()
@@ -419,6 +454,8 @@ local services = {
 		IsServer = function() return true end,
 		IsStudio = function() return false end,
 		IsClient = function() return false end,
+		-- PoseRenderer (client module) binds this; tests drive it manually.
+		PreSimulation = Signal.new(),
 	},
 	-- PoseAnimator tweens Motor6D.C0; tests apply the final value instantly.
 	TweenService = {
@@ -435,11 +472,31 @@ local services = {
 	MarketplaceService = {
 		PromptGamePassPurchaseFinished = Signal.new(),
 		ProcessReceipt = nil,
-		PromptGamePassPurchase = function() end,
-		PromptProductPurchase = function() end,
+		lastGamePassPlayer = nil,
+		lastGamePassPrompt = nil,
+		lastProductPrompt = nil,
+		PromptGamePassPurchase = function(self, player, passId)
+			self.lastGamePassPlayer = player
+			self.lastGamePassPrompt = passId
+		end,
+		PromptProductPurchase = function(self, player, productId)
+			self.lastProductPrompt = productId
+		end,
 		UserOwnsGamePassAsync = function() return false end,
 	},
 	CaptureService = {},
+	-- Client controls bind through ContextActionService (the T key already
+	-- does); tests fire bound handlers via fireContextAction.
+	ContextActionService = {
+		boundActions = {},
+		BindAction = function(self, name, fn, createTouchButton, ...)
+			self.boundActions[name] = { fn = fn, keys = { ... } }
+		end,
+		UnbindAction = function(self, name)
+			self.boundActions[name] = nil
+		end,
+		SetTitle = function() end,
+	},
 }
 local bindToCloseFns = {}
 local game = {
@@ -451,6 +508,15 @@ local game = {
 	end,
 }
 Harness.bindToCloseFns = bindToCloseFns
+-- Fires a ContextActionService-bound handler the way the engine would
+-- (actionName, state, input). Returns the handler's result.
+function Harness.fireContextAction(name, state, input)
+	local action = services.ContextActionService.boundActions[name]
+	if not action then
+		error("no bound ContextActionService action named " .. tostring(name))
+	end
+	return action.fn(name, state, input)
+end
 
 local workspace = Instance.new("Workspace")
 local replicatedStorage = Instance.new("ReplicatedStorage")
@@ -531,7 +597,7 @@ end
 local sharedFolder = Instance.new("Folder")
 sharedFolder.Name = "AuraFarmShared"
 sharedFolder.Parent = replicatedStorage
-for _, name in { "Config", "Remotes", "Util" } do
+for _, name in { "Config", "Remotes", "Util", "PoseTables" } do
 	makeModuleScript(name, "shared/" .. name .. ".lua").Parent = sharedFolder
 end
 
@@ -539,12 +605,27 @@ local serverFolder = Instance.new("Folder")
 serverFolder.Name = "AuraFarmServer"
 serverFolder.Parent = serverScriptService
 for _, name in {
-	"MapService", "DataService", "AuraService", "CrowdService", "PoseService",
-	"PoseAnimator", "JudgeService", "DuelService", "TrainingService",
+	"MapService", "DataService", "RebirthService", "EventService",
+	"AuraService", "CrowdService", "PoseService",
+	"JudgeService", "DuelService", "TrainingService",
 	"LeaderboardService", "MonetizationService", "CapturePromptService",
+	"DevShopService",
 } do
 	makeModuleScript(name, "server/" .. name .. ".lua").Parent = serverFolder
 end
+
+-- Client modules under StarterPlayerScripts (PoseRenderer is loadable and
+-- testable in the mock: the harness env is server-shaped, but the renderer
+-- only needs Players/RunService/ReplicatedStorage/remotes, which exist).
+local starterPlayerScripts = Instance.new("Folder")
+starterPlayerScripts.Name = "StarterPlayerScripts"
+starterPlayerScripts.Parent = game
+local poseRendererModule = makeModuleScript("PoseRenderer.client", "client/PoseRenderer.client.lua")
+poseRendererModule.Parent = starterPlayerScripts
+Harness.poseRendererModule = poseRendererModule
+local trainingUiModule = makeModuleScript("TrainingUi.client", "client/TrainingUi.client.lua")
+trainingUiModule.Parent = starterPlayerScripts
+Harness.trainingUiModule = trainingUiModule
 
 -- Free names bound into every game module (param list of the wrapper).
 local _ENV_BINDING = {
@@ -557,6 +638,10 @@ local _ENV_BINDING = {
 	UDim2 = UDim2,
 	UDim = UDim,
 	Vector2 = Vector2,
+	-- Particle/datatype constructors used by PoseTables.FX and the FX emitters.
+	NumberRange = { new = function(a, b) return { min = a, max = b or a } end },
+	NumberSequence = { new = function(a, b) return { a, b or a } end },
+	ColorSequence = { new = function(a, b) return { a, b or a } end },
 	TweenInfo = TweenInfo,
 	Enum = Enum,
 	task = task,
@@ -589,7 +674,8 @@ local mockOs = {
 }
 local ENV_NAMES = {
 	"game", "workspace", "script", "Instance", "Vector3", "CFrame", "Color3",
-	"UDim2", "UDim", "Vector2", "TweenInfo", "Enum", "task", "require", "os",
+	"UDim2", "UDim", "Vector2", "NumberRange", "NumberSequence", "ColorSequence",
+	"TweenInfo", "Enum", "task", "require", "os",
 	-- Standard libs passed explicitly too: identical values if the chunk env
 	-- already has them, guaranteed values if it doesn't.
 	"math", "table", "string", "pcall", "ipairs", "pairs", "tonumber",
@@ -638,6 +724,7 @@ Harness.Players = Players
 Harness.makePlayer = makePlayer
 Harness.services = services
 Harness.Instance = Instance
+Harness.Enum = Enum
 Harness.Vector3 = Vector3
 Harness.CFrame = CFrame
 Harness.os = mockOs

@@ -4,6 +4,7 @@
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local Shared = game.ReplicatedStorage.AuraFarmShared
 local Config = require(Shared.Config)
@@ -59,11 +60,33 @@ closeCorner.Parent = closeButton
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Position = UDim2.new(0, 10, 0, 52)
-scroll.Size = UDim2.new(1, -20, 1, -62)
+scroll.Size = UDim2.new(1, -20, 1, -112)
 scroll.BackgroundTransparency = 1
 scroll.CanvasSize = UDim2.new(0, 0, 0, #Config.POSES * 64)
 scroll.ScrollBarThickness = 6
 scroll.Parent = panel
+
+-- Dev strip: TRY every Robux perk for free (Studio pilot only).
+local devBar = Instance.new("Frame")
+devBar.Name = "DevTryBar"
+devBar.AnchorPoint = Vector2.new(0.5, 1)
+devBar.Position = UDim2.new(0.5, 0, 1, -8)
+devBar.Size = UDim2.new(1, -20, 0, 50)
+devBar.BackgroundColor3 = Color3.fromRGB(120, 90, 10)
+devBar.Parent = panel
+local devCorner = Instance.new("UICorner")
+devCorner.CornerRadius = UDim.new(0, 10)
+devCorner.Parent = devBar
+local devLabel = Instance.new("TextLabel")
+devLabel.BackgroundTransparency = 1
+devLabel.Position = UDim2.new(0, 8, 0, 0)
+devLabel.Size = UDim2.new(0.36, 0, 1, 0)
+devLabel.Text = "PILOTO: PRUÉBALO GRATIS 🧪"
+devLabel.TextColor3 = Color3.fromRGB(255, 230, 140)
+devLabel.Font = Enum.Font.GothamBold
+devLabel.TextScaled = true
+devLabel.TextXAlignment = Enum.TextXAlignment.Left
+devLabel.Parent = devBar
 
 local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0, 8)
@@ -245,6 +268,47 @@ buildProductRow("MogShield", "🛡️ Mog Shield (1h no steals)")
 buildProductRow("CooldownRefill", "⚡ Cooldown Refill")
 buildProductRow("PartyMode", "🎉 PARTY MODE x2 (server, 10 min)")
 scroll.CanvasSize = UDim2.new(0, 0, 0, (#Config.POSES + #Config.PASS_INFO + 3) * 64)
+
+-- Dev strip buttons: same grant the real purchase gives, zero Robux.
+-- Hidden entirely when not in Studio: outside, the server refuses every
+-- grant, so showing the strip would be a lie.
+local DEV_ITEMS = (RunService:IsStudio() and Config.DEV_SHOP_ENABLED) and {
+	{ key = "DoubleAura", label = "⚡2x" },
+	{ key = "VipPlaza", label = "👑VIP" },
+	{ key = "SigmaPosePack", label = "🗿SIGMA" },
+	{ key = "GoldenDripBundle", label = "✨DRIP" },
+	{ key = "MogShield", label = "🛡️SHIELD" },
+	{ key = "CooldownRefill", label = "⚡REFILL" },
+	{ key = "PartyMode", label = "🎉PARTY" },
+} or nil
+local devGrid = Instance.new("UIGridLayout")
+devGrid.CellSize = UDim2.new(0, 86, 0, 20)
+devGrid.CellPadding = UDim2.new(0, 4, 0, 3)
+devGrid.FillDirectionMaxCells = 4
+devGrid.HorizontalAlignment = Enum.HorizontalAlignment.Right
+devGrid.VerticalAlignment = Enum.VerticalAlignment.Center
+devGrid.SortOrder = Enum.SortOrder.LayoutOrder
+devGrid.Parent = devBar
+local devIndex = 0
+for _, item in (DEV_ITEMS or {}) do
+	devIndex += 1
+	local b = Instance.new("TextButton")
+	b.Name = "DevTry_" .. item.key
+	b.LayoutOrder = devIndex
+	b.Size = UDim2.new(0, 86, 0, 20)
+	b.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
+	b.Text = item.label
+	b.TextColor3 = Color3.fromRGB(40, 30, 0)
+	b.Font = Enum.Font.GothamBold
+	b.TextScaled = true
+	b.Parent = devBar
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, 8)
+	bc.Parent = b
+	b.MouseButton1Click:Connect(function()
+		Remotes.DevShopTry:FireServer(item.key)
+	end)
+end
 
 toast = function(msg: string)
 	heading.Text = msg

@@ -93,3 +93,61 @@ Both remaining client paths exercised in ONE Play session (log
 - Tooling note: the probe lives at tests/studio/ClientProbe.client.lua (pilot-
   only, like SmokeTest — BOTH are wired in default.project.json and BOTH must
   be removed for production builds).
+
+## 2026-09-09 — Live agent-driven session (poses actually visible)
+Root cause of "poses never visible": avatars are rigged with **AnimationConstraint**
+(2026 Avatar Joint Upgrade) — no Motor6Ds, read-only C0, Transform does not
+replicate. Server-side posing was structurally invisible. Rewired per Roblox's
+migration pattern: server keeps authority (validation, aura, PoseStarted/PoseStopped
++ character attribute), new client `PoseRenderer` writes joint Transforms every
+PreSimulation frame; `PoseTables` resolves AnimationConstraint, legacy Motor6D
+R15 and R6 rigs. Suite grew to **21/21** (mock harness bug fixed: FireAllClients
+no longer prepends the player — real Roblox passes only the payload).
+Live proof (Studio 0.737 log, session 11:40Z, avatar FicusTus):
+`[SMOKE] SUMMARY total=13 passed=13 failed=0`, rig inventory 15 AnimationConstraint
+joints, `pose "tpose" rendering ... with 2 joints`, and — after a real P keystroke +
+real wheel click — `pose "moai" rendering ... with 5 joints`
+(evidence/pose_moai_live.png).
+
+## 2026-09-09 — White-out fix (lighting)
+User screenshot: avatar + map pure white. Cause: the place ships Studio default
+Lighting (Brightness ~3.1, EnvironmentDiffuse/SpecularScale = 0) and no code ever
+configured it — harsh direct sun blew every material to white. Fix: MapService.init
+now applies a stylized late-afternoon setup (Brightness 2.2, env scales 0.65/0.45,
+OutdoorAmbient, ClockTime 15.5, shadows + mild bloom) and prints
+`[MapService] lighting applied`. Live session log confirms the line; frame analysis
+of evidence/light_check.png: ground luma 255→~148 with green tint present
+(avg RGB c6e9e4) and shadow structure visible. Suite 21/21; build 14:06.
+
+## 2026-09-09 — Training poses now render (user report: "en el train las poses no van")
+TrainingService recorded the picked pose for judging but never showed it: it never
+called AuraService.setActivePose (duels did). Fix: locking a training pose now calls
+setActivePose(poseId, {noPay=true}) — visual-only, so the pad can't be used as an
+idle-aura farm and round losers gain nothing; the economy entry of a pose farmed
+before the round is suspended while the training pose shows, and restored after
+(priorPoseId). Suite test upgraded to assert the real contract (was picking an
+UNLOCKED pose — the silent rejection that hid the bug): unlock -> pick -> attribute
+stamped -> cleared at round end. 21/21 green.
+
+## 2026-09-09 — Keyboard training picker (digits 1-9)
+User request: the training picker should also work from the keyboard. Each owned
+pose button now shows a number badge (its position in the picker, which only
+lists owned poses), and pressing that digit fires the exact TrainingPick packet
+the button fires. Round banner says "click or press 1-9". Digit resolution uses
+KeyCode.Name (One..Nine), so behavior is identical on real KeyCodes. Suite
+grown to 22/22: the new test binds through the harness's ContextActionService
+mock, opens a round, presses digit 2 (picks moai end-to-end) and digit 9
+(passes through with 2 poses shown). Harness gained: CAS mock + fireContextAction,
+LocalPlayer slot, FireServer (prepends the LocalPlayer like real Roblox),
+GUI-button signals, Enum exposure.
+
+## 2026-09-09 — Digit-key picker PROVEN with real keystrokes (live Studio)
+Session 12:56Z (build 14:56), avatar FicusTus, SMOKE 13/13 first. Sequence via
+real keystrokes: viewport click -> F5 -> T -> 1. Log evidence:
+`[TRAIN] open ... via T KEY (8s window)` -> `[TRAIN] FicusTus locked pose 'tpose'
+at 6.4s left` -> `[PoseRenderer] pose "tpose" rendering on FicusTus with 2 joints`
+(frame: evidence/digit_pose.png; judge scored the round). Negative case: T -> 9
+(unowned position) -> no lock, no render line, round expired CRINGE 0.0.
+BLOCKER found+worked around: TWO stacked Studio modals (Auto-recovery + a
+"Continuar" crash-restore dialog) silently eat ALL keystrokes — new
+tools/dismissdialogs.ps1 closes both via UIA; run it before any automated Play.

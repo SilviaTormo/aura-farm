@@ -2,6 +2,10 @@ name: ci
 on: push
 jobs:
   t:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
-      - run: echo hi
+      - uses: actions/checkout@v4
+      - name: Bundle modules
+        run: node tests/bundle.js
+      - name: Offline suite
+        run: ./tools/luau/luau.exe tests/run_tests.lua

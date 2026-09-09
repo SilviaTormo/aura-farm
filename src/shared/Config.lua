@@ -50,6 +50,10 @@ return {
 
 	-- Monetization (M3): replace the 0s with real IDs from the Creator Dashboard.
 	-- With id = 0 the purchase prompt is skipped and the item shows as "coming soon".
+	-- DEV_SHOP_ENABLED gates DevShopService (free simulated purchases). Server-side
+	-- grants ALSO require RunService:IsStudio(), so flipping this on can never
+	-- leak perks in a published server. Default off.
+	DEV_SHOP_ENABLED = false,
 	GAMEPASSES = {
 		DoubleAura = 0,
 		VipPlaza = 0,
@@ -65,6 +69,18 @@ return {
 	DRIP_AURA_MULTIPLIER = 1.5, -- GoldenDripBundle
 	MOG_SHIELD_SECONDS = 3600,
 	PARTY_MODE_SECONDS = 600,
+
+	-- Rebirth (prestige): reset aura for a permanent multiplier.
+	-- Cost of rebirth #N is REBIRTH_BASE_COST * N (linear, always reachable).
+	REBIRTH_BASE_COST = 20000,
+	REBIRTH_MULTIPLIER_STEP = 0.25, -- +25% aura per rebirth, stacks forever
+
+	-- Live events: variable rewards so farming never goes on autopilot.
+	EVENT_MIN_GAP = 120, -- seconds between events (random in [min, max])
+	EVENT_MAX_GAP = 240,
+	AURA_RAIN_SECONDS = 30, -- global x2 aura rain duration
+	CHEST_REWARD_MIN = 500, -- Golden Chest aura reward range
+	CHEST_REWARD_MAX = 2000,
 	PASS_INFO = {
 		{ key = "DoubleAura", name = "2x Aura ⚡", description = "Double aura from every pose." },
 		{ key = "VipPlaza", name = "VIP Plaza 👑", description = "Access the rooftop VIP spot." },
@@ -177,6 +193,33 @@ return {
 			cost = 15000,
 			description = "Defies gravity. And haters.",
 		} :: Pose,
+		-- Original poses with render effects (PoseTables.FX drives them).
+		{
+			id = "phantom",
+			name = "Phantom Fade 👻",
+			tier = 4,
+			rate = 6,
+			cooldown = 8,
+			cost = 12000,
+			description = "Half here, half beyond. Walks between.",
+		} :: Pose,
+		{
+			id = "ascension",
+			name = "Ascension 🕊️",
+			tier = 4,
+			rate = 6,
+			cooldown = 8,
+			cost = 15000,
+			description = "Leave the ground. Leave them speechless.",
+		} :: Pose,
+		{
+			id = "mogpose",
+			name = "MOG Pose 💀",
+			tier = 4,
+			rate = 8,
+			cooldown = 10,
+			description = "The duel-ending energy, wearable. Ends conversations.",
+		} :: Pose,
 	} :: PoseWheel,
 
 	-- Placeholder animation ids (Studio-owned placeholder; replace in M2).
@@ -193,8 +236,12 @@ return {
 		flex = "0",
 		sigma = "0",
 		sigmalean = "0",
+		phantom = "0",
+		ascension = "0",
+		mogpose = "0",
 	},
 }
 
--- Pose tables live in PoseAnimator (server) — poses are procedural Motor6D
--- stances (see DESIGN.md §5: real animations replace these in M2).
+-- Pose angle tables live in PoseTables (shared) — poses are procedural
+-- joint rotations, rendered client-side (see DESIGN.md §5: real animations
+-- replace these in M2).
