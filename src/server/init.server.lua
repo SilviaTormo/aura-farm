@@ -24,6 +24,8 @@ start("DuelService")
 start("TrainingService")
 start("LeaderboardService")
 start("MonetizationService")
+-- REMOVE BEFORE PUBLISHING: lets players try Robux perks for free.
+start("DevShopService")
 start("CapturePromptService")
 
 print("[AuraFarm] 💀 server up — farm aura, mog responsibly")

@@ -59,11 +59,33 @@ closeCorner.Parent = closeButton
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Position = UDim2.new(0, 10, 0, 52)
-scroll.Size = UDim2.new(1, -20, 1, -62)
+scroll.Size = UDim2.new(1, -20, 1, -112)
 scroll.BackgroundTransparency = 1
 scroll.CanvasSize = UDim2.new(0, 0, 0, #Config.POSES * 64)
 scroll.ScrollBarThickness = 6
 scroll.Parent = panel
+
+-- Dev strip: TRY every Robux perk for free (Studio pilot only).
+local devBar = Instance.new("Frame")
+devBar.Name = "DevTryBar"
+devBar.AnchorPoint = Vector2.new(0.5, 1)
+devBar.Position = UDim2.new(0.5, 0, 1, -8)
+devBar.Size = UDim2.new(1, -20, 0, 50)
+devBar.BackgroundColor3 = Color3.fromRGB(120, 90, 10)
+devBar.Parent = panel
+local devCorner = Instance.new("UICorner")
+devCorner.CornerRadius = UDim.new(0, 10)
+devCorner.Parent = devBar
+local devLabel = Instance.new("TextLabel")
+devLabel.BackgroundTransparency = 1
+devLabel.Position = UDim2.new(0, 8, 0, 0)
+devLabel.Size = UDim2.new(0.36, 0, 1, 0)
+devLabel.Text = "PILOTO: PRUÉBALO GRATIS 🧪"
+devLabel.TextColor3 = Color3.fromRGB(255, 230, 140)
+devLabel.Font = Enum.Font.GothamBold
+devLabel.TextScaled = true
+devLabel.TextXAlignment = Enum.TextXAlignment.Left
+devLabel.Parent = devBar
 
 local layout = Instance.new("UIListLayout")
 layout.Padding = UDim.new(0, 8)
@@ -245,6 +267,40 @@ buildProductRow("MogShield", "🛡️ Mog Shield (1h no steals)")
 buildProductRow("CooldownRefill", "⚡ Cooldown Refill")
 buildProductRow("PartyMode", "🎉 PARTY MODE x2 (server, 10 min)")
 scroll.CanvasSize = UDim2.new(0, 0, 0, (#Config.POSES + #Config.PASS_INFO + 3) * 64)
+
+-- Dev strip buttons: same grant the real purchase gives, zero Robux.
+local DEV_ITEMS = {
+	{ key = "DoubleAura", label = "⚡2x" },
+	{ key = "VipPlaza", label = "👑VIP" },
+	{ key = "SigmaPosePack", label = "🗿SIGMA" },
+	{ key = "GoldenDripBundle", label = "✨DRIP" },
+	{ key = "MogShield", label = "🛡️SHIELD" },
+	{ key = "CooldownRefill", label = "⚡REFILL" },
+	{ key = "PartyMode", label = "🎉PARTY" },
+}
+local devList = Instance.new("UIListLayout")
+devList.FillDirection = Enum.FillDirection.Horizontal
+devList.Padding = UDim.new(0, 4)
+devList.VerticalAlignment = Enum.VerticalAlignment.Center
+devList.HorizontalAlignment = Enum.HorizontalAlignment.Right
+devList.Parent = devBar
+for _, item in DEV_ITEMS do
+	local b = Instance.new("TextButton")
+	b.Name = "DevTry_" .. item.key
+	b.Size = UDim2.new(0, 62, 0, 34)
+	b.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
+	b.Text = item.label
+	b.TextColor3 = Color3.fromRGB(40, 30, 0)
+	b.Font = Enum.Font.GothamBold
+	b.TextScaled = true
+	b.Parent = devBar
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, 8)
+	bc.Parent = b
+	b.MouseButton1Click:Connect(function()
+		Remotes.DevShopTry:FireServer(item.key)
+	end)
+end
 
 toast = function(msg: string)
 	heading.Text = msg

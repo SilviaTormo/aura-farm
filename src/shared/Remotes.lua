@@ -20,6 +20,7 @@ local NAMES = {
 	"RequestPartyMode", -- () -- dev product purchase flow
 	"BuyPass", -- (passKey: string) -- opens gamepass prompt
 	"BuyProduct", -- (productKey: string) -- opens dev product prompt
+	"DevShopTry", -- (key: string) -- Studio-only simulated purchase (DevShopService)
 	"TrainingStart", -- () -- stand on the pad to open a training round
 	"TrainingPick", -- (poseId: string) -- lock a pose for the training round
 
