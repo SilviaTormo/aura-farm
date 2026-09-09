@@ -488,7 +488,6 @@ local services = {
 			self.boundActions[name] = nil
 		end,
 		SetTitle = function() end,
-		SetPosition = function() end,
 	},
 }
 local bindToCloseFns = {}

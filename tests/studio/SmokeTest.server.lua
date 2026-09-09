@@ -95,7 +95,6 @@ if root then
 	-- attribute; each client's PoseRenderer writes joint Transforms from it.
 	-- (Joints are AnimationConstraint since the 2026 Avatar Joint Upgrade —
 	-- Transform writes cannot replicate, so the server must NOT try.)
-	local rs = char:FindFirstChild("RightShoulder", true)
 	local allJoints = {}
 	for _, d in char:GetDescendants() do
 		if d:IsA("Motor6D") or d:IsA("AnimationConstraint") then
@@ -109,7 +108,6 @@ if root then
 			#allJoints, table.concat(allJoints, ", "),
 			humanoid and "yes" or "no",
 			humanoid and tostring(humanoid.RigType) or "-"))
-	local _ = rs -- kept for the diagnostic dump above
 
 	-- AURA: crowd hype ticks the rate × multipliers.
 	local before = auraStat and auraStat.Value or 0

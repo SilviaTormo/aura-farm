@@ -37,6 +37,15 @@ local function isInstanceArg(x): boolean
 	return x.IsA ~= nil and x:IsA("Instance")
 end
 
+-- Zero matched joints is invisible by definition: warn once per character
+-- instead of failing silently (that silence shipped once).
+local function warnZeroJoints(char: Model, poseId: string)
+	if not warned[char] then
+		warned[char] = true
+		warn(("[PoseRenderer] pose %q matched 0 joints on %s -- unknown rig?"):format(poseId, char.Name))
+	end
+end
+
 local function setPose(char: Model?, poseId: string?)
 	if not char then
 		return
@@ -90,12 +99,7 @@ local function setPose(char: Model?, poseId: string?)
 		end
 	end
 	if #joints == 0 then
-		-- Zero matched joints is invisible by definition. Warn once per
-		-- character instead of failing silently (that silence shipped once).
-		if not warned[char] then
-			warned[char] = true
-			warn(("[PoseRenderer] pose %q matched 0 joints on %s -- unknown rig?"):format(poseId, char.Name))
-		end
+		warnZeroJoints(char, poseId)
 		active[char] = { poseId = poseId, joints = joints, alpha = 0, retries = 0, gaveUp = false }
 		return
 	end
@@ -176,7 +180,7 @@ RunService.PreSimulation:Connect(function()
 			record.retries += 1
 			if record.retries > MAX_JOINT_RETRIES then
 				record.gaveUp = true
-				warn(("[PoseRenderer] pose %q matched 0 joints on %s -- unknown rig?"):format(record.poseId, char.Name))
+				warnZeroJoints(char, record.poseId)
 				continue
 			end
 			for _, entry in PoseTables.get(record.poseId) or {} do
