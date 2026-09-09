@@ -19,6 +19,12 @@ local EventService = {}
 
 local auraRainEndsAt = 0
 local eventRunning = false
+local schedulerRunning = false
+
+-- Admin/test kill-switch for the auto-scheduler: forceEvent keeps working.
+function EventService.stopScheduler()
+	schedulerRunning = false
+end
 
 function EventService.isAuraRain(): boolean
 	return os.clock() < auraRainEndsAt
@@ -106,10 +112,11 @@ function EventService.forceEvent(kind: string): string
 end
 
 function EventService.init()
+	schedulerRunning = true
 	task.spawn(function()
 		-- First event a couple of minutes in, then random gaps.
 		task.wait(Config.EVENT_MIN_GAP)
-		while true do
+		while schedulerRunning do
 			EventService.forceEvent(math.random() < 0.5 and "auraRain" or "chest")
 			-- Wait for the event to finish, then a random gap until the next.
 			while eventRunning do

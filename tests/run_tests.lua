@@ -49,6 +49,11 @@ for _, name in {
 	startService(name)
 end
 
+-- EventService's random scheduler must not fire mid-suite: tests advance the
+-- clock and its random events interleave with the ones tests force explicitly
+-- (a scheduler-spawned GoldenChest makes the chest test find the wrong part).
+Harness.requireModule(serverFolder:FindFirstChild("EventService")).stopScheduler()
+
 local MapService = Harness.requireModule(serverFolder:FindFirstChild("MapService"))
 local DataService = Harness.requireModule(serverFolder:FindFirstChild("DataService"))
 local AuraService = Harness.requireModule(serverFolder:FindFirstChild("AuraService"))
