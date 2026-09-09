@@ -605,7 +605,8 @@ local serverFolder = Instance.new("Folder")
 serverFolder.Name = "AuraFarmServer"
 serverFolder.Parent = serverScriptService
 for _, name in {
-	"MapService", "DataService", "AuraService", "CrowdService", "PoseService",
+	"MapService", "DataService", "RebirthService", "EventService",
+	"AuraService", "CrowdService", "PoseService",
 	"JudgeService", "DuelService", "TrainingService",
 	"LeaderboardService", "MonetizationService", "CapturePromptService",
 	"DevShopService",

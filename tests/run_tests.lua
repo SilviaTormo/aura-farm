@@ -40,7 +40,8 @@ local function startService(name)
 end
 
 for _, name in {
-	"MapService", "DataService", "AuraService", "CrowdService", "PoseService",
+	"MapService", "DataService", "RebirthService", "EventService",
+	"AuraService", "CrowdService", "PoseService",
 	"JudgeService", "DuelService", "TrainingService",
 	"LeaderboardService", "MonetizationService", "CapturePromptService",
 	"DevShopService",

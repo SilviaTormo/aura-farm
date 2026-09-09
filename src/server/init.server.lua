@@ -16,6 +16,8 @@ end
 -- Order matters: map first (locations), then data, then the rest.
 start("MapService")
 start("DataService")
+start("RebirthService")
+start("EventService")
 start("AuraService")
 start("CrowdService")
 start("PoseService")

@@ -69,6 +69,18 @@ return {
 	DRIP_AURA_MULTIPLIER = 1.5, -- GoldenDripBundle
 	MOG_SHIELD_SECONDS = 3600,
 	PARTY_MODE_SECONDS = 600,
+
+	-- Rebirth (prestige): reset aura for a permanent multiplier.
+	-- Cost of rebirth #N is REBIRTH_BASE_COST * N (linear, always reachable).
+	REBIRTH_BASE_COST = 20000,
+	REBIRTH_MULTIPLIER_STEP = 0.25, -- +25% aura per rebirth, stacks forever
+
+	-- Live events: variable rewards so farming never goes on autopilot.
+	EVENT_MIN_GAP = 120, -- seconds between events (random in [min, max])
+	EVENT_MAX_GAP = 240,
+	AURA_RAIN_SECONDS = 30, -- global x2 aura rain duration
+	CHEST_REWARD_MIN = 500, -- Golden Chest aura reward range
+	CHEST_REWARD_MAX = 2000,
 	PASS_INFO = {
 		{ key = "DoubleAura", name = "2x Aura ⚡", description = "Double aura from every pose." },
 		{ key = "VipPlaza", name = "VIP Plaza 👑", description = "Access the rooftop VIP spot." },

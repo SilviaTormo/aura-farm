@@ -12,6 +12,8 @@ local Remotes = require(Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
 local MapService = require(script.Parent.MapService)
+local RebirthService = require(script.Parent.RebirthService)
+local EventService = require(script.Parent.EventService)
 
 local AuraService = {}
 
@@ -127,6 +129,12 @@ function AuraService.grantTick(player: Player, crowdCount: number)
 	local auraStat = leaderstats and leaderstats:FindFirstChild("Aura")
 	if auraStat and auraStat:GetAttribute("DoubleAura") == true then
 		multiplier *= Config.PASS_AURA_MULTIPLIER
+	end
+	-- Rebirth prestige: permanent +25% per rebirth (RebirthService).
+	multiplier *= RebirthService.getMultiplier(player)
+	-- Live events: Aura Rain doubles everything while active (EventService).
+	if EventService.isAuraRain() then
+		multiplier *= 2
 	end
 	if AuraService.isPartyMode() then
 		multiplier *= 2

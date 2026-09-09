@@ -23,6 +23,7 @@ local NAMES = {
 	"DevShopTry", -- (key: string) -- Studio-only simulated purchase (DevShopService)
 	"TrainingStart", -- () -- stand on the pad to open a training round
 	"TrainingPick", -- (poseId: string) -- lock a pose for the training round
+	"RebirthRequest", -- () -- reset aura for a permanent multiplier (RebirthService)
 
 	-- server -> client
 	"AuraChanged", -- (player: Player, aura: number)
@@ -41,6 +42,11 @@ local NAMES = {
 	"PartyModeStarted", -- (seconds: number)
 	"TrainingRound", -- (seconds: number) -- training window opened
 	"TrainingResult", -- (yourScore, botScore, yourStamp, botStamp, youWon: boolean, auraWon: number)
+	"RebirthDone", -- (player: Player, rebirths: number, multiplier: number) -- your rebirth went through
+	"RebirthChanged", -- (player: Player, rebirths: number) -- anyone rebirthed (billboard refresh)
+	"EventStarted", -- (kind: string, seconds: number) -- Aura Rain / server event
+	"ChestSpawned", -- (part: BasePart) -- a Golden Chest appeared at this spot
+	"ChestOpened", -- (player: Player, auraWon: number) -- someone opened the chest
 }
 
 if RunService:IsServer() then
