@@ -140,3 +140,14 @@ mock, opens a round, presses digit 2 (picks moai end-to-end) and digit 9
 (passes through with 2 poses shown). Harness gained: CAS mock + fireContextAction,
 LocalPlayer slot, FireServer (prepends the LocalPlayer like real Roblox),
 GUI-button signals, Enum exposure.
+
+## 2026-09-09 — Digit-key picker PROVEN with real keystrokes (live Studio)
+Session 12:56Z (build 14:56), avatar FicusTus, SMOKE 13/13 first. Sequence via
+real keystrokes: viewport click -> F5 -> T -> 1. Log evidence:
+`[TRAIN] open ... via T KEY (8s window)` -> `[TRAIN] FicusTus locked pose 'tpose'
+at 6.4s left` -> `[PoseRenderer] pose "tpose" rendering on FicusTus with 2 joints`
+(frame: evidence/digit_pose.png; judge scored the round). Negative case: T -> 9
+(unowned position) -> no lock, no render line, round expired CRINGE 0.0.
+BLOCKER found+worked around: TWO stacked Studio modals (Auto-recovery + a
+"Continuar" crash-restore dialog) silently eat ALL keystrokes — new
+tools/dismissdialogs.ps1 closes both via UIA; run it before any automated Play.
